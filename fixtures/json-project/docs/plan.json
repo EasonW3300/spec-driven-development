@@ -1,0 +1,29 @@
+{
+  "title": "产品计划，JSON 主机格式（内容刻意区别于 spec.json）",
+  "unknown": {"keep": true},
+  "spec_driven": {
+    "active_module_id": "M1",
+    "modules": [
+      {
+        "id": "M1",
+        "order": 1,
+        "title": "核心基线",
+        "goal": "交付带门控的核心版本",
+        "status": "pending",
+        "prerequisites": [],
+        "acceptance": ["MVP works"],
+        "tests": ["unit", "regression"]
+      },
+      {
+        "id": "M2",
+        "order": 2,
+        "title": "主机适配器",
+        "goal": "通过核心门控接线各主机",
+        "status": "pending",
+        "prerequisites": ["M1"],
+        "acceptance": [],
+        "tests": ["unit", "regression"]
+      }
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "title": "Product spec, JSON host format",
+  "stakeholders": [
+    {"name": "platform", "role": "owner"}
+  ],
+  "spec_driven": {
+    "active_module_id": "M1",
+    "modules": [
+      {
+        "id": "M1",
+        "order": 1,
+        "title": "Core",
+        "goal": "Build core engine",
+        "status": "pending",
+        "prerequisites": [],
+        "acceptance": ["gate works"],
+        "tests": ["unit", "regression"]
+      },
+      {
+        "id": "M2",
+        "order": 2,
+        "title": "Adapter",
+        "goal": "Build adapter",
+        "status": "pending",
+        "prerequisites": ["M1"],
+        "acceptance": [],
+        "tests": ["unit", "regression"]
+      }
+    ]
+  }
+}
