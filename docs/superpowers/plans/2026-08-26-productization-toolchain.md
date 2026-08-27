@@ -24,21 +24,21 @@
 
 ```text
 src/spec_driven/
-  capabilities.py
-  diagnostics.py
-  install.py
-  migrate.py
-  release.py
-install/manifests/
+  capabilities.py        # from core baseline Task 2; consumed, not modified
+  diagnostics.py         # created here
+  install.py             # from core baseline Task 7; hardened in Task 2
+  migrate.py             # created here
+  release.py             # created here
+install/manifests/       # committed by the adapter plans; verified in Task 1
   claude-code.json
   codex.json
 migrations/
   README.md
-tests/unit/test_capabilities.py
-tests/unit/test_install.py
+tests/unit/test_capabilities.py          # extended in Task 1
+tests/unit/test_install.py               # extended in Task 2
 tests/unit/test_migrate.py
 tests/integration/test_doctor.py
-tests/integration/test_install_round_trip.py
+tests/integration/test_install_round_trip.py   # extended in Task 2
 tests/e2e/test_self_test.py
 .github/workflows/ci.yml
 README.md
@@ -49,281 +49,206 @@ CHANGELOG.md
 
 ---
 
-### Task 1: Define versioned capability and compatibility reports
+### Task 1: Verify the cross-host capability and compatibility model
+
+The capability vocabulary ships in core baseline Task 2 (`src/spec_driven/capabilities.py`): `CapabilityStatus` (`available`/`degraded`/`unavailable`), `Capability`, `CapabilityReport`, and `HostManifest(schema_version, host, adapter_module, skill_source, skill_target, settings_target, settings_fragment)` with `load_host_manifest(path)` rejecting missing or empty mechanisms. This task does **not** redefine any of that code; it proves the real per-host manifests that the adapter plans commit load, declare importable adapters, and expose concrete registrations.
 
 **Files:**
-- Modify: `src/spec_driven/capabilities.py`
-- Modify: `tests/unit/test_capabilities.py`
-- Modify: `install/manifests/claude-code.json`
-- Modify: `install/manifests/codex.json`
+- Consumes: `src/spec_driven/capabilities.py` (core baseline Task 2).
+- Verify committed by adapter plans: `install/manifests/claude-code.json`, `install/manifests/codex.json`.
+- Modify: `tests/unit/test_capabilities.py` (append cross-host verification; keep core's tests intact).
 
-**Interfaces:**
-- `CapabilityStatus` values: `available`, `degraded`, `unavailable`.
-- `Capability(name: str, status: str, mechanism: str, guarantee: str, remediation: str | None)`.
-- `CapabilityReport(schema_version: int, host: str, adapter_version: str, capabilities: tuple[Capability, ...])`.
-- `HostManifest(schema_version: int, host: str, adapter_module: str, skill_source: str, settings_target: str, settings_fragment: dict[str, object])`.
-- `load_host_manifest(path: Path) -> HostManifest` rejects missing or empty install mechanisms.
+- [ ] **Step 1: Confirm the core capability module and its tests already pass**
 
-- [ ] **Step 1: Write failing report and manifest validation tests**
+Run core baseline Task 2's capability tests unchanged:
+
+```bash
+python -m pytest tests/unit/test_capabilities.py -q
+```
+
+Expected: green. If `Capability`, `CapabilityReport`, `HostManifest`, or `load_host_manifest` is missing, stop and complete core baseline Task 2 first; nothing in this plan adds them.
+
+- [ ] **Step 2: Write the cross-host manifest verification test**
+
+Append to `tests/unit/test_capabilities.py`:
 
 ```python
+import importlib
 from pathlib import Path
 
 import pytest
 
-from spec_driven.capabilities import Capability, CapabilityReport, load_host_manifest
-from spec_driven.errors import ConfigError
+from spec_driven.capabilities import CapabilityReport, load_host_manifest
+
+ROOT = Path(__file__).resolve().parents[2]
+HOSTS = {"claude-code", "codex"}
 
 
-def test_capability_report_has_stable_json_shape() -> None:
-    report = CapabilityReport(1, "generic", "0.1.0", (Capability("confirmation", "available", "CLI", "exact command", None),))
-    assert report.to_dict()["capabilities"][0]["status"] == "available"
-
-
-def test_existing_host_manifest_has_a_real_install_mechanism() -> None:
-    manifest = load_host_manifest(Path("install/manifests/claude-code.json"))
-    assert manifest.schema_version == 1
-    assert manifest.host == "claude-code"
+@pytest.mark.parametrize("host", sorted(HOSTS))
+def test_real_manifest_declares_importable_adapter_and_concrete_registration(host: str) -> None:
+    manifest = load_host_manifest(ROOT / "install" / "manifests" / f"{host}.json")
+    assert manifest.host == host
+    importlib.import_module(manifest.adapter_module)
     assert manifest.settings_fragment
+    assert manifest.skill_source
+    assert manifest.settings_target
 
 
-def test_empty_settings_fragment_is_rejected(tmp_path: Path) -> None:
-    path = tmp_path / "host.json"
-    path.write_text(
-        '{"schema_version":1,"host":"h","adapter_module":"m",'
-        '"skill_source":"s","settings_target":"settings.json",'
-        '"settings_fragment":{}}',
-        encoding="utf-8",
-    )
-    with pytest.raises(ConfigError, match="settings_fragment"):
-        load_host_manifest(path)
+def test_capability_report_builds_per_host() -> None:
+    for host in sorted(HOSTS):
+        manifest = load_host_manifest(ROOT / "install" / "manifests" / f"{host}.json")
+        report = CapabilityReport(1, manifest.host, "0.1.0", ())
+        assert report.to_dict()["host"] == manifest.host
 ```
 
-- [ ] **Step 2: Run tests to verify the capability module or validation is incomplete**
+This requires the Claude Code and Codex adapter plans to have committed their real, contract-tested manifest files before this task runs. Do not replace those files with examples here.
+
+- [ ] **Step 3: Run the tests**
 
 ```bash
 python -m pytest tests/unit/test_capabilities.py -q
 ```
 
-Expected: import error before `capabilities.py` exists, or a validation failure before the existing adapter manifests are complete.
-
-- [ ] **Step 3: Extend the core capability model with validated host manifests**
-
-Add `HostManifest` and `load_host_manifest` to `src/spec_driven/capabilities.py`. Parse JSON, require `schema_version == 1`, require non-empty `host`, `adapter_module`, `skill_source`, and `settings_target`, and require a non-empty `settings_fragment`. Preserve the existing `Capability` and `CapabilityReport` definitions from the core plan unchanged. Raise `ConfigError` with the manifest path and missing field name.
-
-- [ ] **Step 4: Verify both adapter plans provide non-empty manifests**
-
-The Claude Code and Codex adapter plans must commit their real, contract-tested manifest files before this task starts. Do not replace those files with examples here. Load both files in `tests/unit/test_capabilities.py` and assert their hosts are exactly `claude-code` and `codex`, their adapter modules are importable, and their settings fragments contain at least one concrete registration.
-
-- [ ] **Step 5: Run tests and commit the compatibility model**
+- [ ] **Step 4: Commit the cross-host verification**
 
 ```bash
-python -m pytest tests/unit/test_capabilities.py -q
-python -m pytest -q
-git add src/spec_driven/capabilities.py tests/unit/test_capabilities.py install/manifests
-git commit -m "feat: validate host capability manifests"
+git add tests/unit/test_capabilities.py
+git commit -m "test: verify per-host capability manifests"
 ```
 
 ---
 
-### Task 2: Build previewable and reversible installation plans
+### Task 2: Verify and harden the installation surface
+
+The installation primitives ship in core baseline Task 7 (`src/spec_driven/install.py`): `InstallOperation`, `InstallPlan`, `InstallReceipt`, `plan_install`, `apply_install`, `rollback_install`, plus the CLI `install --host --scope --dry-run` and `uninstall --receipt`. This task does **not** rebuild them. It closes the one blind spot — `uninstall` currently trusts the receipt file without verifying its paths (spec §12: reject path escape) — and proves the real adapter manifests install, merge, persist project-scope receipts, and roll back byte-equivalently.
 
 **Files:**
-- Create: `src/spec_driven/install.py`
-- Create: `tests/unit/test_install.py`
-- Create: `tests/integration/test_install_round_trip.py`
-- Modify: `src/spec_driven/cli.py`
+- Consumes: `src/spec_driven/install.py`, `src/spec_driven/cli.py` (core baseline Task 7); `install/manifests/claude-code.json`, `install/manifests/codex.json` and their skill sources (adapter plans).
+- Modify: `src/spec_driven/install.py` (add `verify_receipt`).
+- Modify: `src/spec_driven/cli.py` (`uninstall` gains `--root` and verifies the receipt before rolling back).
+- Modify: `tests/unit/test_install.py` (append receipt-verification tests).
+- Modify: `tests/integration/test_install_round_trip.py` (append cross-host real-manifest E2E; core Task 7 already placed a unit-level round-trip there).
 
 **Interfaces:**
-- `InstallOperation(kind: Literal["copy", "merge_json", "merge_toml"], source: Path | None, target: Path, fragment: Mapping[str, object] | None)`.
-- `InstallPlan(host: str, root: Path, operations: tuple[InstallOperation, ...])`.
-- `plan_install(manifest: HostManifest, package_root: Path, target_root: Path) -> InstallPlan`.
-- `apply_install(plan: InstallPlan, backup_root: Path) -> InstallReceipt`.
-- `rollback_install(receipt: InstallReceipt) -> None`.
-- CLI `install --host {claude-code,codex} --scope {user,project} --dry-run` and `uninstall --receipt PATH`.
+- Consumed from core baseline Task 7: `InstallPlan`, `InstallReceipt`, `plan_install`, `apply_install`, `rollback_install`, CLI `install`/`uninstall`.
+- Added: `verify_receipt(receipt: InstallReceipt, root: Path) -> None` re-resolves every target and backup path against `root` and raises `ValueError` (`path escapes target root`) for any escape.
+- CLI: `uninstall --receipt PATH --root ROOT` (default ROOT = current working directory) validates the receipt before `rollback_install`.
 
-- [ ] **Step 1: Write failing planner and rollback tests**
+- [ ] **Step 1: Write failing receipt-hardening tests**
+
+Append to `tests/unit/test_install.py`:
 
 ```python
-import json
-from pathlib import Path
-
-from spec_driven.capabilities import HostManifest
-from spec_driven.install import apply_install, plan_install, rollback_install
+from spec_driven.install import InstallReceipt, verify_receipt
 
 
-def test_install_merges_settings_without_losing_unknown_keys(tmp_path: Path) -> None:
-    package = tmp_path / "package"
-    package.mkdir()
-    (package / "skill").mkdir()
-    (package / "skill" / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
-    target = tmp_path / "home"
-    (target / ".claude").mkdir(parents=True)
-    settings = target / ".claude" / "settings.json"
-    settings.write_text(json.dumps({"theme": "dark", "hooks": {}}), encoding="utf-8")
-    manifest = HostManifest(1, "claude-code", "module", "skill", ".claude/settings.json", {"hooks": {"SessionStart": []}})
-    plan = plan_install(manifest, package, target)
-    receipt = apply_install(plan, target / ".spec-driven-install-backups")
-    merged = json.loads(settings.read_text(encoding="utf-8"))
-    assert merged["theme"] == "dark"
-    assert "SessionStart" in merged["hooks"]
-    rollback_install(receipt)
-    assert json.loads(settings.read_text(encoding="utf-8")) == {"theme": "dark", "hooks": {}}
-
-
-def test_install_rejects_target_escape(tmp_path: Path) -> None:
-    manifest = HostManifest(1, "bad", "module", "skill", "../outside.json", {})
+def test_receipt_with_escaping_target_is_rejected(tmp_path: Path) -> None:
+    receipt = InstallReceipt("bad", (("../outside.json", None),), ())
     with pytest.raises(ValueError, match="escapes target root"):
-        plan_install(manifest, tmp_path, tmp_path / "home")
+        verify_receipt(receipt, tmp_path / "root")
+
+
+def test_receipt_with_escaping_backup_is_rejected(tmp_path: Path) -> None:
+    (tmp_path / "root").mkdir()
+    (tmp_path / "root" / "settings.json").write_text("{}", encoding="utf-8")
+    receipt = InstallReceipt("bad", (("settings.json", str(tmp_path / "backups" / "0-settings.json")),), ())
+    with pytest.raises(ValueError, match="escapes target root"):
+        verify_receipt(receipt, tmp_path / "root")
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run:
-
 ```bash
-python -m pytest tests/unit/test_install.py tests/integration/test_install_round_trip.py -q
+python -m pytest tests/unit/test_install.py -q
 ```
 
-Expected: import error for `install`.
+Expected: import error for `verify_receipt`.
 
-- [ ] **Step 3: Implement installation values and safe path resolution**
+- [ ] **Step 3: Implement receipt verification**
 
-`src/spec_driven/install.py` begins with:
+Add to `src/spec_driven/install.py`:
 
 ```python
-from __future__ import annotations
-
-import json
-import shutil
-from dataclasses import asdict, dataclass
-from pathlib import Path
-from typing import Literal, Mapping
-
-import tomlkit
-
-from .capabilities import HostManifest
-
-
-@dataclass(frozen=True)
-class InstallOperation:
-    kind: Literal["copy", "merge_json", "merge_toml"]
-    source: Path | None
-    target: Path
-    fragment: Mapping[str, object] | None
-
-
-@dataclass(frozen=True)
-class InstallPlan:
-    host: str
-    root: Path
-    operations: tuple[InstallOperation, ...]
-
-
-@dataclass(frozen=True)
-class InstallReceipt:
-    host: str
-    backups: tuple[tuple[str, str | None], ...]
-    created_paths: tuple[str, ...]
-
-
-def _inside(root: Path, path: Path) -> Path:
+def verify_receipt(receipt: InstallReceipt, root: Path) -> None:
+    """Reject any receipt path that would escape the declared target root."""
     resolved_root = root.resolve()
-    resolved = path.resolve()
-    if resolved != resolved_root and resolved_root not in resolved.parents:
-        raise ValueError(f"path escapes target root: {path}")
-    return resolved
-
-
-def plan_install(manifest: HostManifest, package_root: Path, target_root: Path) -> InstallPlan:
-    settings = _inside(target_root, target_root / manifest.settings_target)
-    skill_target = _inside(target_root, target_root / ".agents" / "skills" / "spec-driven-development")
-    return InstallPlan(manifest.host, target_root.resolve(), (
-        InstallOperation("copy", package_root / manifest.skill_source, skill_target, None),
-        InstallOperation("merge_json" if settings.suffix == ".json" else "merge_toml", None, settings, manifest.settings_fragment),
-    ))
+    for target_text, backup_text in receipt.backups:
+        for candidate in (target_text, backup_text):
+            if candidate is None:
+                continue
+            resolved = (resolved_root / candidate).resolve()
+            if resolved != resolved_root and resolved_root not in resolved.parents:
+                raise ValueError(f"path escapes target root: {candidate}")
 ```
 
-- [ ] **Step 4: Implement deep merge, backup receipt, apply, and rollback**
+- [ ] **Step 4: Wire receipt verification into uninstall**
 
-Continue `install.py`:
+Extend the `uninstall` handler from core Task 7 with a `--root` argument (default `Path.cwd()`), read the receipt, verify it, then roll back:
 
 ```python
-def _deep_merge(base: dict[str, object], fragment: Mapping[str, object]) -> dict[str, object]:
-    merged = dict(base)
-    for key, value in fragment.items():
-        if isinstance(value, Mapping) and isinstance(merged.get(key), Mapping):
-            merged[key] = _deep_merge(dict(merged[key]), value)
-        else:
-            merged[key] = value
-    return merged
-
-
-def _merge_toml(container: object, fragment: Mapping[str, object]) -> None:
-    for key, value in fragment.items():
-        if isinstance(value, Mapping):
-            current = container.get(key)
-            if current is None:
-                current = tomlkit.table()
-                container[key] = current
-            _merge_toml(current, value)
-        else:
-            container[key] = value
-
-
-def apply_install(plan: InstallPlan, backup_root: Path) -> InstallReceipt:
-    backup_root.mkdir(parents=True, exist_ok=True)
-    backups: list[tuple[str, str | None]] = []
-    created: list[str] = []
-    for index, operation in enumerate(plan.operations):
-        _inside(plan.root, operation.target)
-        backup = backup_root / f"{index}-{operation.target.name}"
-        if operation.target.exists():
-            if operation.target.is_dir():
-                shutil.copytree(operation.target, backup)
-            else:
-                shutil.copy2(operation.target, backup)
-            backups.append((str(operation.target), str(backup)))
-        else:
-            backups.append((str(operation.target), None))
-            created.append(str(operation.target))
-        operation.target.parent.mkdir(parents=True, exist_ok=True)
-        if operation.kind == "copy":
-            if operation.target.exists():
-                shutil.rmtree(operation.target)
-            shutil.copytree(operation.source, operation.target)
-        elif operation.kind == "merge_json":
-            current = json.loads(operation.target.read_text(encoding="utf-8")) if operation.target.exists() else {}
-            merged = _deep_merge(current, operation.fragment or {})
-            operation.target.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
-        elif operation.kind == "merge_toml":
-            document = tomlkit.parse(operation.target.read_text(encoding="utf-8")) if operation.target.exists() else tomlkit.document()
-            _merge_toml(document, operation.fragment or {})
-            operation.target.write_text(tomlkit.dumps(document), encoding="utf-8")
-        else:
-            raise ValueError(f"unsupported install operation: {operation.kind}")
-    return InstallReceipt(plan.host, tuple(backups), tuple(created))
-
-
-def rollback_install(receipt: InstallReceipt) -> None:
-    for target_text, backup_text in reversed(receipt.backups):
-        target = Path(target_text)
-        if target.exists():
-            shutil.rmtree(target) if target.is_dir() else target.unlink()
-        if backup_text:
-            backup = Path(backup_text)
-            if backup.is_dir():
-                shutil.copytree(backup, target)
-            else:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(backup, target)
+def _uninstall(args: argparse.Namespace) -> int:
+    receipt = json.loads(Path(args.receipt).read_text(encoding="utf-8"))
+    parsed = InstallReceipt(**receipt)
+    verify_receipt(parsed, args.root)
+    rollback_install(parsed)
+    return 0
 ```
 
-- [ ] **Step 5: Add CLI dry-run and receipt output**
+- [ ] **Step 5: Write the cross-host real-manifest round-trip test**
 
-Extend `cli.py` so `install --dry-run` serializes `InstallPlan` without applying it, while an actual install writes the receipt as JSON under the selected target root at `.spec-driven/install-receipts/<host>.json`. `uninstall` reads exactly that receipt and calls `rollback_install`.
+Append to `tests/integration/test_install_round_trip.py`. This requires the adapter plans to have committed `install/manifests/claude-code.json`, `install/manifests/codex.json`, and each manifest's `skill_source` directory (Claude Code: `skills/spec-driven-development/` from core Task 8; Codex: `adapters/codex/`) before this task runs.
 
-- [ ] **Step 6: Run install tests and commit**
+```python
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from spec_driven.capabilities import load_host_manifest
+from spec_driven.cli import _install, _uninstall
+from spec_driven.install import apply_install, plan_install, rollback_install, verify_receipt
+
+ROOT = Path(__file__).resolve().parents[2]
+HOSTS = {"claude-code", "codex"}
+
+
+@pytest.mark.parametrize("host", sorted(HOSTS))
+def test_real_manifest_merges_and_rolls_back_byte_equivalent(tmp_path: Path, host: str) -> None:
+    manifest = load_host_manifest(ROOT / "install" / "manifests" / f"{host}.json")
+    target = tmp_path / "home"
+    settings = target / manifest.settings_target
+    settings.parent.mkdir(parents=True)
+    seed = '{"theme": "dark"}' if settings.suffix == ".json" else 'model = "keep"\n'
+    settings.write_text(seed, encoding="utf-8")
+    receipt = apply_install(plan_install(manifest, ROOT, target), target / ".spec-driven-install-backups")
+    merged = settings.read_text(encoding="utf-8")
+    assert "theme" in merged or "keep" in merged  # unknown key survived
+    verify_receipt(receipt, target)
+    rollback_install(receipt)
+    assert settings.read_text(encoding="utf-8") == seed
+
+
+def test_real_manifests_expose_concrete_registrations() -> None:
+    claude = load_host_manifest(ROOT / "install" / "manifests" / "claude-code.json")
+    assert "SessionStart" in claude.settings_fragment["hooks"]
+    codex = load_host_manifest(ROOT / "install" / "manifests" / "codex.json")
+    assert codex.settings_fragment == {"notify": {"background": True}}
+
+
+def test_cli_project_install_and_uninstall_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert _install(SimpleNamespace(host="claude-code", scope="project", dry_run=False)) == 0
+    settings = tmp_path / ".claude" / "settings.json"
+    assert settings.is_file()
+    assert "spec-driven-claude" in settings.read_text(encoding="utf-8")
+    receipt_path = tmp_path / ".spec-driven" / "install-receipts" / "claude-code.json"
+    assert receipt_path.is_file()
+    assert _uninstall(SimpleNamespace(receipt=str(receipt_path), root=tmp_path)) == 0
+    assert not settings.exists()
+```
+
+- [ ] **Step 6: Run the hardened install suite and commit**
 
 Run:
 
@@ -332,11 +257,11 @@ python -m pytest tests/unit/test_install.py tests/integration/test_install_round
 python -m pytest -q
 ```
 
-Expected: unknown settings survive install, rollback restores byte-equivalent originals, and path escape is rejected.
+Expected: escaping receipt paths are rejected, unknown settings survive real-manifest installs, rollback restores byte-equivalent originals, and the project-scope CLI round trip persists and consumes the receipt under `.spec-driven/install-receipts/`.
 
 ```bash
 git add src/spec_driven/install.py src/spec_driven/cli.py tests/unit/test_install.py tests/integration/test_install_round_trip.py
-git commit -m "feat: add reversible host installation"
+git commit -m "feat: verify install receipts and prove real-manifest round trips"
 ```
 
 ---

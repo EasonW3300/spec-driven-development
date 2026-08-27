@@ -73,7 +73,7 @@ tests/e2e/
 - Produces `spec_driven.__version__: str`.
 - Produces `spec_driven.cli.main(argv: list[str] | None = None) -> int`.
 
-- [x] **Step 1: Write the failing package test**
+- [ ] **Step 1: Write the failing package test**
 
 ```python
 from spec_driven import __version__
@@ -83,7 +83,7 @@ def test_package_exposes_version() -> None:
     assert __version__ == "0.1.0"
 ```
 
-- [x] **Step 2: Run it and verify the package is missing**
+- [ ] **Step 2: Run it and verify the package is missing**
 
 Run:
 
@@ -93,7 +93,7 @@ python -m pytest tests/unit/test_package.py -q
 
 Expected: `ModuleNotFoundError: No module named 'spec_driven'`.
 
-- [x] **Step 3: Add build configuration and the minimal package**
+- [ ] **Step 3: Add build configuration and the minimal package**
 
 `pyproject.toml`:
 
@@ -107,7 +107,7 @@ name = "spec-driven-development"
 version = "0.1.0"
 description = "Host-neutral spec-driven development workflow engine"
 requires-python = ">=3.11"
-dependencies = ["ruamel.yaml>=0.18,<0.19"]
+dependencies = ["ruamel.yaml>=0.18,<0.19", "tomlkit>=0.13,<0.14"]
 
 [project.optional-dependencies]
 test = ["pytest>=8,<9"]
@@ -167,7 +167,7 @@ __pycache__/
 .spec-driven/
 ```
 
-- [x] **Step 4: Install editable dependencies and pass the test**
+- [ ] **Step 4: Install editable dependencies and pass the test**
 
 Run:
 
@@ -178,7 +178,7 @@ python -m pytest tests/unit/test_package.py -q
 
 Expected: `1 passed`.
 
-- [x] **Step 5: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add pyproject.toml .gitignore src tests/conftest.py tests/unit/test_package.py
@@ -206,7 +206,7 @@ git commit -m "chore: bootstrap spec-driven package"
 - `load_config(project_root: Path, global_path: Path | None = None, session_override: Mapping[str, object] | None = None) -> ProjectConfig`.
 - Every raised `SpecDrivenError` has stable `code`, `retryable`, and `remediation` fields.
 
-- [x] **Step 1: Write failing immutability and precedence tests**
+- [ ] **Step 1: Write failing immutability and precedence tests**
 
 ```python
 from pathlib import Path
@@ -239,7 +239,7 @@ def test_project_and_session_override_global_config(tmp_path: Path) -> None:
     assert session.unit_test_command == "session-unit"
 ```
 
-- [x] **Step 2: Run tests and verify imports fail**
+- [ ] **Step 2: Run tests and verify imports fail**
 
 Run:
 
@@ -249,7 +249,7 @@ python -m pytest tests/unit/test_models.py tests/unit/test_config.py -q
 
 Expected: import errors for missing modules.
 
-- [x] **Step 3: Implement immutable domain values**
+- [ ] **Step 3: Implement immutable domain values**
 
 `src/spec_driven/models.py`:
 
@@ -354,17 +354,34 @@ class StateSnapshot:
     processed_event_ids: frozenset[str]
 ```
 
-- [x] **Step 4: Add the shared capability report model**
+- [ ] **Step 4: Add the shared capability report model**
 
 `tests/unit/test_capabilities.py`:
 
 ```python
-from spec_driven.capabilities import Capability, CapabilityReport
+from pathlib import Path
+
+import pytest
+
+from spec_driven.capabilities import Capability, CapabilityReport, load_host_manifest
+from spec_driven.errors import ConfigError
 
 
 def test_capability_report_serializes_stable_fields() -> None:
     report = CapabilityReport(1, "generic", "0.1.0", (Capability("confirmation", "available", "CLI", "exact command", None),))
     assert report.to_dict()["capabilities"][0]["status"] == "available"
+
+
+def test_empty_settings_fragment_is_rejected(tmp_path: Path) -> None:
+    path = tmp_path / "host.json"
+    path.write_text(
+        '{"schema_version":1,"host":"h","adapter_module":"m",'
+        '"skill_source":"s","settings_target":"settings.json",'
+        '"settings_fragment":{}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError, match="missing required fields"):
+        load_host_manifest(path)
 ```
 
 `src/spec_driven/capabilities.py`:
@@ -372,8 +389,12 @@ def test_capability_report_serializes_stable_fields() -> None:
 ```python
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Literal
+
+from .errors import ConfigError
 
 CapabilityStatus = Literal["available", "degraded", "unavailable"]
 
@@ -401,9 +422,39 @@ class CapabilityReport:
             "adapter_version": self.adapter_version,
             "capabilities": [asdict(item) for item in self.capabilities],
         }
+
+
+@dataclass(frozen=True)
+class HostManifest:
+    schema_version: int
+    host: str
+    adapter_module: str
+    skill_source: str
+    skill_target: str
+    settings_target: str
+    settings_fragment: dict[str, object]
+
+
+def load_host_manifest(path: Path) -> HostManifest:
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if raw.get("schema_version") != 1:
+        raise ConfigError(f"unsupported host manifest: {path}")
+    missing = [name for name in ("host", "adapter_module", "skill_source", "skill_target", "settings_target") if not raw.get(name)]
+    fragment = raw.get("settings_fragment")
+    if missing or not isinstance(fragment, dict) or not fragment:
+        raise ConfigError(f"host manifest is missing required fields: {path}", remediation=f"fix install/manifests/{path.name}")
+    return HostManifest(
+        schema_version=1,
+        host=str(raw["host"]),
+        adapter_module=str(raw["adapter_module"]),
+        skill_source=str(raw["skill_source"]),
+        skill_target=str(raw["skill_target"]),
+        settings_target=str(raw["settings_target"]),
+        settings_fragment=dict(fragment),
+    )
 ```
 
-- [x] **Step 5: Implement stable errors**
+- [ ] **Step 5: Implement stable errors**
 
 `src/spec_driven/errors.py`:
 
@@ -445,7 +496,7 @@ class RecoveryRequiredError(SpecDrivenError):
     code = "RECOVERY_REQUIRED"
 ```
 
-- [x] **Step 6: Implement layered YAML configuration**
+- [ ] **Step 6: Implement layered YAML configuration**
 
 `src/spec_driven/config.py`:
 
@@ -519,7 +570,7 @@ def load_config(
     )
 ```
 
-- [x] **Step 7: Pass focused and full tests, then commit**
+- [ ] **Step 7: Pass focused and full tests, then commit**
 
 ```bash
 python -m pytest tests/unit/test_models.py tests/unit/test_capabilities.py tests/unit/test_config.py -q
@@ -548,7 +599,7 @@ git commit -m "feat: add domain values and configuration"
 - `infer_test_commands(project_root: Path, config: ProjectConfig) -> tuple[str, str]` returns only an unambiguous pair.
 - `parse_plan_modules(path: Path, allow_inference: bool) -> tuple[Module, ...]` accepts explicit managed markers and contiguous order.
 
-- [x] **Step 1: Write failing discovery and module tests**
+- [ ] **Step 1: Write failing discovery and module tests**
 
 ```python
 from pathlib import Path
@@ -584,7 +635,7 @@ def test_explicit_markers_produce_contiguous_modules() -> None:
     assert [(module.module_id, module.order) for module in modules] == [("M1", 1), ("M2", 2)]
 ```
 
-- [x] **Step 2: Run tests and verify missing imports**
+- [ ] **Step 2: Run tests and verify missing imports**
 
 ```bash
 python -m pytest tests/unit/test_discovery.py tests/unit/test_modules.py -q
@@ -592,7 +643,7 @@ python -m pytest tests/unit/test_discovery.py tests/unit/test_modules.py -q
 
 Expected: import errors.
 
-- [x] **Step 3: Add a complete fixture**
+- [ ] **Step 3: Add a complete fixture**
 
 `fixtures/markdown-project/spec-driven.config.yaml`:
 
@@ -637,7 +688,7 @@ Evidence:
 
 The `M2` block has `order="2"`, `status="pending"`, goal `Translate host events`, and `Next module:` with an empty value.
 
-- [x] **Step 4: Implement discovery with configured paths before scanning**
+- [ ] **Step 4: Implement discovery with configured paths before scanning**
 
 `src/spec_driven/discovery.py`:
 
@@ -709,7 +760,7 @@ def infer_test_commands(root: Path, config: ProjectConfig) -> tuple[str, str]:
     return candidates[0]
 ```
 
-- [x] **Step 5: Implement marker-first module parsing**
+- [ ] **Step 5: Implement marker-first module parsing**
 
 `src/spec_driven/modules.py`:
 
@@ -775,7 +826,7 @@ def parse_plan_modules(path: Path, allow_inference: bool) -> tuple[Module, ...]:
     return ordered
 ```
 
-- [x] **Step 6: Pass tests and commit**
+- [ ] **Step 6: Pass tests and commit**
 
 ```bash
 python -m pytest tests/unit/test_discovery.py tests/unit/test_modules.py -q
@@ -802,7 +853,7 @@ git commit -m "feat: discover documents and parse modules"
 - `StateRepository.load() -> StateSnapshot | None`, `save(snapshot: StateSnapshot) -> None` preserve nested types.
 - `start_module`, `record_test_result`, `record_checkpoint`, and `complete_current_module` are pure state transforms.
 
-- [x] **Step 1: Write failing persistence and gate tests**
+- [ ] **Step 1: Write failing persistence and gate tests**
 
 ```python
 from pathlib import Path
@@ -852,7 +903,7 @@ def test_last_module_completion_finishes_session() -> None:
     assert completed.current_module_id == "M2"
 ```
 
-- [x] **Step 2: Run tests and verify imports fail**
+- [ ] **Step 2: Run tests and verify imports fail**
 
 ```bash
 python -m pytest tests/unit/test_events.py tests/unit/test_state.py -q
@@ -860,7 +911,7 @@ python -m pytest tests/unit/test_events.py tests/unit/test_state.py -q
 
 Expected: import errors.
 
-- [x] **Step 3: Implement event validation and append-only storage**
+- [ ] **Step 3: Implement event validation and append-only storage**
 
 `src/spec_driven/events.py`:
 
@@ -910,7 +961,7 @@ class EventStore:
         return tuple(self.read(path.stem) for path in sorted(self.directory.glob("*.json")))
 ```
 
-- [x] **Step 4: Implement typed snapshot serialization**
+- [ ] **Step 4: Implement typed snapshot serialization**
 
 `src/spec_driven/state.py` begins with:
 
@@ -980,7 +1031,7 @@ class StateRepository:
             Path(temporary).unlink(missing_ok=True)
 ```
 
-- [x] **Step 5: Implement pure gate and transition functions**
+- [ ] **Step 5: Implement pure gate and transition functions**
 
 Append to `state.py`:
 
@@ -1053,7 +1104,7 @@ def complete_current_module(snapshot: StateSnapshot, event_id: str) -> StateSnap
     )
 ```
 
-- [x] **Step 6: Pass focused and full tests, then commit**
+- [ ] **Step 6: Pass focused and full tests, then commit**
 
 ```bash
 python -m pytest tests/unit/test_events.py tests/unit/test_state.py -q
@@ -1082,9 +1133,9 @@ git commit -m "feat: persist gated module state"
 - `DocumentAdapter` exposes `name`, `suffixes`, `parse_modules`, `plan_update`, and `apply`.
 - `DocumentPatch(path: Path, expected_sha256: str, replacement: str, description: str)`.
 - `apply_transaction(patches: tuple[DocumentPatch, ...], runtime_root: Path, event_id: str, save_state: Callable[[], None]) -> None`.
-- Transaction journal states are `prepared`, `documents_applied`, `committed`, `rolled_back`.
+- Transaction journal states are `prepared`, `documents_applied`, `state_saved`, `committed`, `rolled_back`. Recovery treats `prepared`/`documents_applied` as rollback (state was not saved) and `state_saved` as commit (documents and state are already consistent).
 
-- [x] **Step 1: Write failing adapter and rollback tests**
+- [ ] **Step 1: Write failing adapter and rollback tests**
 
 ```python
 from pathlib import Path
@@ -1136,7 +1187,7 @@ def test_transaction_restores_first_document_when_state_save_fails(tmp_path: Pat
     assert plan.read_text(encoding="utf-8") == "old plan\n"
 ```
 
-- [x] **Step 2: Run tests and verify imports fail**
+- [ ] **Step 2: Run tests and verify imports fail**
 
 ```bash
 python -m pytest tests/contract/test_document_adapter.py tests/unit/test_markdown.py tests/unit/test_transactions.py -q
@@ -1144,7 +1195,7 @@ python -m pytest tests/contract/test_document_adapter.py tests/unit/test_markdow
 
 Expected: import errors.
 
-- [x] **Step 3: Define patch primitives and plugin protocol**
+- [ ] **Step 3: Define patch primitives and plugin protocol**
 
 `src/spec_driven/patches.py`:
 
@@ -1152,8 +1203,12 @@ Expected: import errors.
 from __future__ import annotations
 
 import hashlib
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+
+from .errors import DocumentConflictError
 
 
 def sha256(path: Path) -> str:
@@ -1166,6 +1221,25 @@ class DocumentPatch:
     expected_sha256: str
     replacement: str
     description: str
+
+
+def apply_atomic(patch: DocumentPatch) -> None:
+    """Single-file atomic writer shared by format adapters.
+
+    Re-checks the hash, writes a temp file, fsyncs, and renames. Throws
+    DocumentConflictError when the document changed since planning.
+    """
+    if sha256(patch.path) != patch.expected_sha256:
+        raise DocumentConflictError(f"stale document hash: {patch.path}")
+    fd, temporary = tempfile.mkstemp(prefix=f"{patch.path.name}.", dir=patch.path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(patch.replacement)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, patch.path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
 ```
 
 `src/spec_driven/documents/base.py`:
@@ -1187,7 +1261,7 @@ class DocumentAdapter(Protocol):
     def apply(self, patch: DocumentPatch) -> None: ...
 ```
 
-- [x] **Step 4: Implement managed-block Markdown updates**
+- [ ] **Step 4: Implement managed-block Markdown updates**
 
 `src/spec_driven/documents/markdown.py`:
 
@@ -1262,7 +1336,7 @@ class MarkdownAdapter:
             Path(temporary).unlink(missing_ok=True)
 ```
 
-- [x] **Step 5: Implement the multi-file journaled transaction**
+- [ ] **Step 5: Implement the multi-file journaled transaction**
 
 `src/spec_driven/transactions.py`:
 
@@ -1315,6 +1389,7 @@ def apply_transaction(
             replaced.append(index)
         _write_journal(journal, "documents_applied", patches)
         save_state()
+        _write_journal(journal, "state_saved", patches)
         _write_journal(journal, "committed", patches)
     except BaseException:
         for index in replaced:
@@ -1323,7 +1398,7 @@ def apply_transaction(
         raise
 ```
 
-- [x] **Step 6: Add the adapter contract test and pass all tests**
+- [ ] **Step 6: Add the adapter contract test and pass all tests**
 
 `tests/contract/test_document_adapter.py` verifies `MarkdownAdapter.name`, suffixes, module parsing, `DocumentUpdate` planning, stale-hash rejection, and idempotent apply.
 
@@ -1338,7 +1413,7 @@ git commit -m "feat: add recoverable Markdown transactions"
 
 ---
 
-> **Implementation notes (Task 5 complete):** Transaction journals live at `<state_dir>/transactions/<event_id>/journal.json`; `recover()` treats status `documents_applied` as requiring manual recovery. YAML/JSON adapters (structured-documents plan) must implement the same `DocumentAdapter` Protocol — idempotent regeneration of managed content is what keeps replays byte-stable.
+> **Implementation notes (Task 5 complete):** Transaction journals live at `<state_dir>/transactions/<event_id>/journal.json`. The three crash windows are handled by status: `prepared`/`documents_applied` (docs may be replaced, state not saved) → `recover()` restores backups and marks `rolled_back`; `state_saved` (docs and state consistent) → `recover()` marks `committed`; `committed`/`rolled_back` → no-op. `patches.apply_atomic` is the shared single-file atomic writer (hash re-check + temp + fsync + rename) that the YAML/JSON adapters in the structured-documents plan use; MarkdownAdapter may delegate to it but must not change its bytes behavior. YAML/JSON adapters (structured-documents plan) must implement the same `DocumentAdapter` Protocol — idempotent regeneration of managed content is what keeps replays byte-stable.
 
 ### Task 6: Coordinate the engine, generic adapter, and JSON CLI
 
@@ -1352,12 +1427,13 @@ git commit -m "feat: add recoverable Markdown transactions"
 - Create: `tests/integration/test_cli.py`
 
 **Interfaces:**
-- `CoreEngine.start()`, `start_module(event)`, `record_test(event_id, evidence)`, `record_checkpoint(event_id, checkpoint)`, `confirm_next(event)`, `status()`, `recover()`.
+- `CoreEngine.start()`, `start_module(event)`, `record_test(event_id, evidence)`, `record_checkpoint(event_id, checkpoint)`, `confirm_next(event)`, `ingest_event(event)`, `status()`, `recover()`.
 - `GenericAdapter.normalize(raw: Mapping[str, object]) -> Event` rejects non-explicit confirmation.
-- CLI commands accept structured JSON through `--input PATH` or stdin `-`: `start`, `status`, `start-module`, `record-test`, `checkpoint`, `confirm-next`, `recover`, `doctor`.
+- CLI commands accept structured JSON through `--input PATH` or stdin `-`: `start`, `status`, `start-module`, `record-test`, `checkpoint`, `confirm-next`, `ingest-event`, `recover`, `doctor`.
+- `ingest-event` appends a validated audit event without any state transition; it is how host adapters record `session_started`/`spec_detected`/`plan_detected` without changing module state.
 - JSON errors contain `code`, `message`, `retryable`, and `remediation` and map to exit code `1`; malformed CLI input maps to `2`.
 
-- [x] **Step 1: Write failing engine integration tests**
+- [ ] **Step 1: Write failing engine integration tests**
 
 ```python
 import shutil
@@ -1395,7 +1471,7 @@ def test_engine_updates_both_documents_only_after_gate(tmp_path: Path) -> None:
     assert engine.status().current_module_id == "M2"
 ```
 
-- [x] **Step 2: Run tests and verify engine import fails**
+- [ ] **Step 2: Run tests and verify engine import fails**
 
 ```bash
 python -m pytest tests/integration/test_engine.py -q
@@ -1403,13 +1479,15 @@ python -m pytest tests/integration/test_engine.py -q
 
 Expected: import error for `CoreEngine`.
 
-- [x] **Step 3: Implement the engine as the only transaction coordinator**
+- [ ] **Step 3: Implement the engine as the only transaction coordinator**
 
 `src/spec_driven/engine.py`:
 
 ```python
 from __future__ import annotations
 
+import json
+import shutil
 from dataclasses import replace
 from pathlib import Path
 from typing import Callable
@@ -1491,13 +1569,22 @@ class CoreEngine:
         self.state_repository.save(updated)
         return updated
 
+    def ingest_event(self, event: Event) -> StateSnapshot:
+        """Append an audit event without any state transition (host session lifecycles)."""
+        snapshot = self.status()
+        validate_event(event)
+        if event.event_id in snapshot.processed_event_ids:
+            return snapshot
+        self.event_store.append(event)
+        return snapshot
+
     def confirm_next(self, event: Event) -> StateSnapshot:
         snapshot = self.status()
         validate_event(event)
-        if event.session_id != snapshot.session_id or event.module_id != snapshot.current_module_id:
-            raise InvalidEventError("confirmation session/module does not match current state")
         if event.event_id in snapshot.processed_event_ids:
             return snapshot
+        if event.session_id != snapshot.session_id or event.module_id != snapshot.current_module_id:
+            raise InvalidEventError("confirmation session/module does not match current state")
         updated = complete_current_module(snapshot, event.event_id)
         checkpoint = snapshot.checkpoint
         if checkpoint is None:
@@ -1522,13 +1609,35 @@ class CoreEngine:
 
     def recover(self) -> StateSnapshot:
         snapshot = self.status()
-        incomplete = [path for path in (self.runtime / "transactions").glob("*/journal.json") if __import__("json").loads(path.read_text(encoding="utf-8"))["status"] == "documents_applied"]
-        if incomplete:
-            raise RecoveryRequiredError("transaction requires explicit recovery", remediation=f"inspect {incomplete[0].parent}")
+        restored: list[str] = []
+        for journal in sorted((self.runtime / "transactions").glob("*/journal.json")):
+            payload = json.loads(journal.read_text(encoding="utf-8"))
+            if payload["status"] in {"committed", "rolled_back"}:
+                continue
+            if payload["status"] == "state_saved":
+                payload["status"] = "committed"
+                journal.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+                continue
+            transaction = journal.parent
+            for backup in sorted((transaction / "backups").glob("*.bak")):
+                index = int(backup.stem)
+                target = Path(payload["paths"][index])
+                if self.project_root not in target.resolve().parents:
+                    raise RecoveryRequiredError(f"transaction journal points outside project: {target}")
+                shutil.copy2(backup, target)
+                restored.append(str(target))
+            payload["status"] = "rolled_back"
+            journal.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        if restored:
+            raise RecoveryRequiredError(
+                f"rolled back {len(restored)} interrupted document write(s)",
+                retryable=True,
+                remediation="re-run the last confirmation after recovery",
+            )
         return snapshot
 ```
 
-- [x] **Step 4: Implement generic normalization**
+- [ ] **Step 4: Implement generic normalization**
 
 `src/spec_driven/adapters/generic.py`:
 
@@ -1550,7 +1659,7 @@ class GenericAdapter:
             session_id=str(raw.get("session_id", "")),
             type=str(raw.get("type", "")),
             occurred_at=str(raw.get("occurred_at", "")),
-            source="generic",
+            source=str(raw.get("source") or "generic"),
             actor=str(raw.get("actor", "")),
             module_id=str(raw["module_id"]) if raw.get("module_id") is not None else None,
             payload=dict(payload),
@@ -1560,7 +1669,7 @@ class GenericAdapter:
         return event
 ```
 
-- [x] **Step 5: Implement JSON CLI parsing and errors**
+- [ ] **Step 5: Implement JSON CLI parsing and errors**
 
 Replace `src/spec_driven/cli.py` with an `argparse` parser whose subcommands share `--project`, whose structured commands share `--input` defaulting to `-`, and whose handlers decode exact `Event`, `TestEvidence`, and `Checkpoint` dataclasses. Serialize dataclasses with `dataclasses.asdict`; print errors as:
 
@@ -1582,6 +1691,7 @@ The command-to-engine mapping is:
     "start-module": lambda: engine.start_module(Event(**payload)),
     "record-test": lambda: engine.record_test(str(payload["event_id"]), TestEvidence(**payload["evidence"])),
     "checkpoint": lambda: engine.record_checkpoint(str(payload["event_id"]), Checkpoint(**payload["checkpoint"])),
+    "ingest-event": lambda: engine.ingest_event(GenericAdapter().normalize(payload)),
     "confirm-next": lambda: engine.confirm_next(GenericAdapter().normalize(payload)),
     "recover": engine.recover,
 }
@@ -1605,7 +1715,7 @@ def doctor(project: Path) -> dict[str, object]:
 
 The `doctor` subcommand prints this mapping as JSON and returns `0`; discovery/configuration errors use the standard error shape and return `1`.
 
-- [x] **Step 6: Pass engine/CLI tests and commit**
+- [ ] **Step 6: Pass engine/CLI tests and commit**
 
 ```bash
 python -m pytest tests/integration/test_engine.py tests/integration/test_generic_adapter.py tests/integration/test_cli.py -q
@@ -1616,9 +1726,363 @@ git commit -m "feat: expose the gated core engine"
 
 ---
 
-> **Implementation notes (Task 6 complete):** `confirm_next` hard-verifies `session_id` + `module_id` against the live snapshot — hosts must echo back the session id from `start` output. Structured CLI inputs must carry every `Event` field including `source`. CLI errors: exit 1 domain failures with `{code,message,retryable,remediation}`; exit 2 malformed input (`CLI_INPUT_INVALID`). Snapshot JSON emission converts frozensets to sorted lists (`_jsonable`).
+> **Implementation notes (Task 6 complete):** `confirm_next` checks `processed_event_ids` first (replaying the identical event returns the cached snapshot — core’s idempotency contract), then hard-verifies `session_id` + `module_id` against the live snapshot, so a *new* event for a stale module is rejected — hosts must echo back the session id from `start` output. Structured CLI inputs must carry every `Event` field including `source`. CLI errors: exit 1 domain failures with `{code,message,retryable,remediation}`; exit 2 malformed input (`CLI_INPUT_INVALID`). Snapshot JSON emission converts frozensets to sorted lists (`_jsonable`).
 
-### Task 7: Add the agent-facing skill and end-to-end recovery tests
+### Task 7: Add reversible host installation primitives
+
+**Files:**
+- Create: `src/spec_driven/install.py`
+- Create: `tests/unit/test_install.py`
+- Create: `tests/integration/test_install_round_trip.py`
+- Modify: `src/spec_driven/cli.py`
+
+**Interfaces:**
+- `InstallOperation(kind: Literal["copy", "merge_json", "merge_toml"], source: Path | None, target: Path, fragment: Mapping[str, object] | None)`.
+- `InstallPlan(host: str, root: Path, operations: tuple[InstallOperation, ...])`.
+- `InstallReceipt(host: str, backups: tuple[tuple[str, str | None], ...], created_paths: tuple[str, ...])`.
+- `plan_install(manifest: HostManifest, package_root: Path, target_root: Path) -> InstallPlan` maps the manifest's `skill_source` and `settings_target` to concrete paths.
+- `apply_install(plan: InstallPlan, backup_root: Path) -> InstallReceipt`.
+- `rollback_install(receipt: InstallReceipt) -> None` restores byte-equivalent originals.
+- CLI `install --host {claude-code,codex} --scope {user,project} --dry-run` and `uninstall --receipt PATH`.
+
+The Claude Code and Codex adapter plans run after this task and only supply manifest data plus round-trip tests; they never reimplement installation.
+
+- [ ] **Step 1: Write failing planner, rollback, and TOML-merge tests**
+
+`tests/unit/test_install.py`:
+
+```python
+import json
+from pathlib import Path
+
+import pytest
+
+from spec_driven.capabilities import HostManifest
+from spec_driven.install import apply_install, plan_install, rollback_install
+
+
+def test_install_merges_json_settings_without_losing_unknown_keys(tmp_path: Path) -> None:
+    package = tmp_path / "package"
+    (package / "skill").mkdir(parents=True)
+    (package / "skill" / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
+    target = tmp_path / "home"
+    (target / ".claude").mkdir(parents=True)
+    settings = target / ".claude" / "settings.json"
+    settings.write_text(json.dumps({"theme": "dark", "hooks": {}}), encoding="utf-8")
+    manifest = HostManifest(
+        1, "claude-code", "module", "skill", ".claude/skills/spec-driven-development",
+        ".claude/settings.json", {"hooks": {"SessionStart": []}},
+    )
+    plan = plan_install(manifest, package, target)
+    receipt = apply_install(plan, target / ".spec-driven-install-backups")
+    merged = json.loads(settings.read_text(encoding="utf-8"))
+    assert merged["theme"] == "dark"
+    assert "SessionStart" in merged["hooks"]
+    assert (target / ".claude/skills/spec-driven-development" / "SKILL.md").is_file()
+    rollback_install(receipt)
+    assert json.loads(settings.read_text(encoding="utf-8")) == {"theme": "dark", "hooks": {}}
+    assert not (target / ".claude/skills").exists()
+
+
+def test_install_merges_toml_settings_and_restores_exactly(tmp_path: Path) -> None:
+    package = tmp_path / "package"
+    (package / "skill").mkdir(parents=True)
+    (package / "skill" / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
+    target = tmp_path / "home"
+    (target / ".codex").mkdir(parents=True)
+    config = target / ".codex" / "config.toml"
+    config.write_text('model = "keep"\n[notify]\nbackground = false\n', encoding="utf-8")
+    manifest = HostManifest(
+        1, "codex", "module", "skill", ".codex/skills/spec-driven-development",
+        ".codex/config.toml", {"notify": {"background": True}},
+    )
+    receipt = apply_install(plan_install(manifest, package, target), target / ".spec-driven-install-backups")
+    merged = config.read_text(encoding="utf-8")
+    assert 'model = "keep"' in merged
+    assert "background = true" in merged
+    rollback_install(receipt)
+    assert config.read_text(encoding="utf-8") == 'model = "keep"\n[notify]\nbackground = false\n'
+
+
+def test_install_rejects_target_escape(tmp_path: Path) -> None:
+    manifest = HostManifest(1, "bad", "module", "skill", "target", "../outside.json", {})
+    with pytest.raises(ValueError, match="escapes target root"):
+        plan_install(manifest, tmp_path, tmp_path / "home")
+
+
+def test_install_unions_hook_registrations_and_stays_idempotent(tmp_path: Path) -> None:
+    package = tmp_path / "package"
+    (package / "skill").mkdir(parents=True)
+    (package / "skill" / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
+    target = tmp_path / "home"
+    (target / ".claude").mkdir(parents=True)
+    settings = target / ".claude" / "settings.json"
+    settings.write_text(json.dumps({
+        "hooks": {"PostToolUse": [{
+            "matcher": "PostToolUse(Bash(...))",
+            "hooks": [{"type": "command", "command": "user-hook"}],
+        }]},
+    }), encoding="utf-8")
+    fragment = {"hooks": {"PostToolUse": [{
+        "matcher": "PostToolUse(Bash(...))",
+        "hooks": [{"type": "command", "command": "spec-driven-claude"}],
+    }]}}
+    manifest = HostManifest(1, "claude-code", "module", "skill", ".claude/skills/spec-driven-development", ".claude/settings.json", fragment)
+    backup_root = target / ".spec-driven-install-backups"
+    receipt = apply_install(plan_install(manifest, package, target), backup_root)
+    merged = json.loads(settings.read_text(encoding="utf-8"))
+    assert len(merged["hooks"]["PostToolUse"]) == 2
+    apply_install(plan_install(manifest, package, target), backup_root)
+    assert len(json.loads(settings.read_text(encoding="utf-8"))["hooks"]["PostToolUse"]) == 2
+    rollback_install(receipt)
+    assert json.loads(settings.read_text(encoding="utf-8"))["hooks"]["PostToolUse"][0]["hooks"][0]["command"] == "user-hook"
+
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run:
+
+```bash
+python -m pytest tests/unit/test_install.py -q
+```
+
+Expected: import error for `install`.
+
+- [ ] **Step 3: Implement installation values and safe path resolution**
+
+`src/spec_driven/install.py`:
+
+```python
+from __future__ import annotations
+
+import json
+import shutil
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal, Mapping
+
+import tomlkit
+
+from .capabilities import HostManifest
+
+
+@dataclass(frozen=True)
+class InstallOperation:
+    kind: Literal["copy", "merge_json", "merge_toml"]
+    source: Path | None
+    target: Path
+    fragment: Mapping[str, object] | None
+
+
+@dataclass(frozen=True)
+class InstallPlan:
+    host: str
+    root: Path
+    operations: tuple[InstallOperation, ...]
+
+
+@dataclass(frozen=True)
+class InstallReceipt:
+    host: str
+    backups: tuple[tuple[str, str | None], ...]
+    created_paths: tuple[str, ...]
+
+
+def _inside(root: Path, path: Path) -> Path:
+    resolved_root = root.resolve()
+    resolved = path.resolve()
+    if resolved != resolved_root and resolved_root not in resolved.parents:
+        raise ValueError(f"path escapes target root: {path}")
+    return resolved
+
+
+def plan_install(manifest: HostManifest, package_root: Path, target_root: Path) -> InstallPlan:
+    settings = _inside(target_root, target_root / manifest.settings_target)
+    skill = _inside(target_root, target_root / manifest.skill_target)
+    kind = "merge_toml" if settings.suffix.lower() == ".toml" else "merge_json"
+    return InstallPlan(manifest.host, target_root.resolve(), (
+        InstallOperation("copy", package_root / manifest.skill_source, skill, None),
+        InstallOperation(kind, None, settings, manifest.settings_fragment),
+    ))
+```
+
+- [ ] **Step 4: Implement deep merge, backup receipt, apply, and rollback**
+
+Continue `install.py`:
+
+```python
+def _commands(registration: Mapping[str, object]) -> tuple[str, ...]:
+    commands = []
+    for hook in registration.get("hooks", []):
+        if isinstance(hook, Mapping) and isinstance(hook.get("command"), str):
+            commands.append(hook["command"])
+    return tuple(commands)
+
+
+def _union_lists(base: list[object], fragment: list[object]) -> list[object]:
+    """Merge two setting arrays.
+
+    A registration is any item carrying a ``matcher`` (Claude Code hooks).
+    Registrations with the same ``matcher`` are: skipped when identical
+    (reinstall no-op), replaced when they share a command (version upgrade),
+    and otherwise both kept (user + ours coexist). Plain items union by equality.
+    """
+    merged = list(base)
+    for item in fragment:
+        if not isinstance(item, Mapping):
+            if item not in merged:
+                merged.append(item)
+            continue
+        commands = set(_commands(item))
+        replaced = False
+        for index, existing in enumerate(merged):
+            if not isinstance(existing, Mapping) or existing.get("matcher") != item.get("matcher"):
+                continue
+            existing_commands = set(_commands(existing))
+            if existing_commands == commands:
+                replaced = True
+                break
+            if commands & existing_commands:
+                merged[index] = item
+                replaced = True
+                break
+        if not replaced:
+            merged.append(item)
+    return merged
+
+
+def _deep_merge(base: dict[str, object], fragment: Mapping[str, object]) -> dict[str, object]:
+    merged = dict(base)
+    for key, value in fragment.items():
+        if isinstance(value, Mapping) and isinstance(merged.get(key), Mapping):
+            merged[key] = _deep_merge(dict(merged[key]), value)
+        elif isinstance(value, list) and isinstance(merged.get(key), list):
+            merged[key] = _union_lists(list(merged[key]), value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _merge_toml(container: object, fragment: Mapping[str, object]) -> None:
+    for key, value in fragment.items():
+        if isinstance(value, Mapping):
+            current = container.get(key)
+            if current is None:
+                current = tomlkit.table()
+                container[key] = current
+            _merge_toml(current, value)
+        else:
+            container[key] = value
+
+
+def apply_install(plan: InstallPlan, backup_root: Path) -> InstallReceipt:
+    backup_root.mkdir(parents=True, exist_ok=True)
+    backups: list[tuple[str, str | None]] = []
+    created: list[str] = []
+    for index, operation in enumerate(plan.operations):
+        _inside(plan.root, operation.target)
+        backup = backup_root / f"{index}-{operation.target.name}"
+        if operation.target.exists():
+            if operation.target.is_dir():
+                shutil.copytree(operation.target, backup)
+            else:
+                shutil.copy2(operation.target, backup)
+            backups.append((str(operation.target), str(backup)))
+        else:
+            backups.append((str(operation.target), None))
+            created.append(str(operation.target))
+        operation.target.parent.mkdir(parents=True, exist_ok=True)
+        if operation.kind == "copy":
+            if operation.target.exists():
+                shutil.rmtree(operation.target)
+            shutil.copytree(operation.source, operation.target)
+        elif operation.kind == "merge_json":
+            current = json.loads(operation.target.read_text(encoding="utf-8")) if operation.target.exists() else {}
+            merged = _deep_merge(current, operation.fragment or {})
+            operation.target.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+        elif operation.kind == "merge_toml":
+            document = tomlkit.parse(operation.target.read_text(encoding="utf-8")) if operation.target.exists() else tomlkit.document()
+            _merge_toml(document, operation.fragment or {})
+            operation.target.write_text(tomlkit.dumps(document), encoding="utf-8")
+        else:
+            raise ValueError(f"unsupported install operation: {operation.kind}")
+    return InstallReceipt(plan.host, tuple(backups), tuple(created))
+
+
+def rollback_install(receipt: InstallReceipt) -> None:
+    for target_text, backup_text in reversed(receipt.backups):
+        target = Path(target_text)
+        if target.exists():
+            shutil.rmtree(target) if target.is_dir() else target.unlink()
+        if backup_text:
+            backup = Path(backup_text)
+            if backup.is_dir():
+                shutil.copytree(backup, target)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(backup, target)
+```
+
+- [ ] **Step 5: Wire install and uninstall into the CLI**
+
+Extend the `argparse` subcommands from Task 6. Add `install` with `--host`, `--scope {user,project}`, and `--dry-run`, and `uninstall` with `--receipt PATH`. Resolve the manifest from the source tree for development and the package-data directory in release:
+
+```python
+def _manifest_path(host: str) -> Path:
+    return Path(__file__).resolve().parents[2] / "install" / "manifests" / f"{host}.json"
+
+
+def _install(args: argparse.Namespace) -> int:
+    package_root = Path(__file__).resolve().parents[2]
+    manifest = load_host_manifest(_manifest_path(args.host))
+    target_root = Path.home() if args.scope == "user" else Path.cwd()
+    plan = plan_install(manifest, package_root, target_root)
+    if args.dry_run:
+        print(json.dumps(_jsonable(asdict(plan)), indent=2))
+        return 0
+    backup_root = target_root / ".spec-driven" / "install-receipts" / ".backups"
+    receipt = apply_install(plan, backup_root)
+    receipt_path = target_root / ".spec-driven" / "install-receipts" / f"{args.host}.json"
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_text(json.dumps(_jsonable(asdict(receipt)), indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(_jsonable(asdict(receipt)), indent=2))
+    return 0
+
+
+def _uninstall(args: argparse.Namespace) -> int:
+    receipt = json.loads(Path(args.receipt).read_text(encoding="utf-8"))
+    rollback_install(InstallReceipt(**receipt))
+    return 0
+```
+
+Reuse the `_jsonable` helper from Task 6 to convert `Path` and nested dataclasses to JSON-safe values. Add a dry-run round-trip test in `tests/integration/test_install_round_trip.py` that plans, applies, inspects, and rolls back both a JSON host and a TOML host using manifests written to a temporary tree.
+
+- [ ] **Step 6: Run install tests and the full suite**
+
+Run:
+
+```bash
+python -m pytest tests/unit/test_install.py tests/integration/test_install_round_trip.py -q
+python -m pytest -q
+```
+
+Expected: unknown settings survive install, rollback restores byte-equivalent originals, path escape is rejected for both JSON and TOML targets, and hook registrations union by `(matcher, hook commands)` so reinstall never duplicates and a user's same-event matcher with a different command is preserved.
+
+- [ ] **Step 7: Commit the installation primitives**
+
+```bash
+git add src/spec_driven/install.py src/spec_driven/cli.py tests/unit/test_install.py tests/integration/test_install_round_trip.py
+git commit -m "feat: add reversible host installation"
+```
+
+---
+
+---
+
+> **Implementation notes (Task 7 complete):** `_union_lists` gives hook-style registrations append semantics instead of replace — identical (matcher, commands) is a reinstall no-op, a shared command upgrades the registration in place, and disjoint commands coexist. Adapter plans only supply a manifest whose `settings_fragment` carries their registrations; they never touch `install.py`. The Codex TOML merger follows the same receipt shape and preserves unrelated `[table]` keys.
+
+### Task 8: Add the agent-facing skill and end-to-end recovery tests
 
 **Files:**
 - Create: `skills/spec-driven-development/SKILL.md`
@@ -1755,7 +2219,126 @@ def test_natural_language_cannot_normalize_as_confirmation() -> None:
 
 - [ ] **Step 3: Write recovery and conflict tests**
 
-`tests/e2e/test_recovery.py` injects a `save_state` failure into `apply_transaction`, asserts both files roll back, repeats the same event ID, and verifies a successful retry produces one committed journal. It then edits a document after patch planning and asserts `DOCUMENT_CONFLICT` without overwriting that edit.
+`tests/e2e/test_recovery.py`:
+
+```python
+from __future__ import annotations
+
+import json
+import shutil
+from pathlib import Path
+
+import pytest
+
+from spec_driven.engine import CoreEngine
+from spec_driven.errors import DocumentConflictError, RecoveryRequiredError
+from spec_driven.models import Checkpoint, Event, TestEvidence
+from spec_driven.transactions import apply_transaction
+from spec_driven.patches import DocumentPatch, sha256
+
+
+def _root(tmp_path: Path) -> Path:
+    root = tmp_path / "project"
+    shutil.copytree("fixtures/markdown-project", root)
+    return root
+
+
+def _event(event_id: str, event_type: str, actor: str = "agent") -> Event:
+    return Event(
+        event_id, 1, "session-1", event_type, "2026-08-26T00:00:00Z",
+        "generic", actor, "M1",
+        {"confirmation": "explicit_command"} if event_type == "next_module_confirmed" else {},
+    )
+
+
+def _evidence(kind: str, code: int) -> TestEvidence:
+    return TestEvidence(kind, "M1", kind, ".", "t0", "t1", code, None, "summary", 1)
+
+
+def _reach_awaiting(engine: CoreEngine) -> None:
+    engine.start()
+    engine.start_module(_event("start-1", "module_started"))
+    engine.record_test("unit-1", _evidence("unit", 0))
+    engine.record_test("reg-1", _evidence("regression", 0))
+    engine.record_checkpoint("cp-event", Checkpoint("cp1", "M1", ("MVP works",), ("reuse API",)))
+
+
+def test_state_save_failure_restores_both_documents(tmp_path: Path) -> None:
+    runtime = tmp_path / ".spec-driven"
+    spec = tmp_path / "spec.md"
+    plan = tmp_path / "plan.md"
+    spec.write_text("old spec\n", encoding="utf-8")
+    plan.write_text("old plan\n", encoding="utf-8")
+    patches = (
+        DocumentPatch(spec, sha256(spec), "new spec\n", "spec"),
+        DocumentPatch(plan, sha256(plan), "new plan\n", "plan"),
+    )
+    with pytest.raises(RuntimeError, match="state failed"):
+        apply_transaction(patches, runtime, "e1", lambda: (_ for _ in ()).throw(RuntimeError("state failed")))
+    assert spec.read_text(encoding="utf-8") == "old spec\n"
+    assert plan.read_text(encoding="utf-8") == "old plan\n"
+
+
+def test_recover_rolls_back_documents_applied_transaction(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    engine = CoreEngine.from_project(root, session_id_factory=lambda: "session-1")
+    engine.start()
+    spec = root / "docs/specs/product.md"
+    plan = root / "docs/plans/product-plan.md"
+    before_spec = spec.read_bytes()
+    before_plan = plan.read_bytes()
+    transaction = engine.runtime / "transactions" / "interrupted"
+    (transaction / "backups").mkdir(parents=True)
+    shutil.copy2(spec, transaction / "backups" / "0.bak")
+    shutil.copy2(plan, transaction / "backups" / "1.bak")
+    spec.write_text("interrupted spec\n", encoding="utf-8")
+    plan.write_text("interrupted plan\n", encoding="utf-8")
+    (transaction / "journal.json").write_text(json.dumps({
+        "schema_version": 1,
+        "status": "documents_applied",
+        "paths": [str(spec), str(plan)],
+    }, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    with pytest.raises(RecoveryRequiredError):
+        engine.recover()
+    assert spec.read_bytes() == before_spec
+    assert plan.read_bytes() == before_plan
+    journal = json.loads((transaction / "journal.json").read_text(encoding="utf-8"))
+    assert journal["status"] == "rolled_back"
+    # A second recover finds nothing to restore and returns the snapshot.
+    engine.recover()
+
+
+def test_recover_commits_state_saved_transaction(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    engine = CoreEngine.from_project(root, session_id_factory=lambda: "session-1")
+    engine.start()
+    spec = root / "docs/specs/product.md"
+    plan = root / "docs/plans/product-plan.md"
+    transaction = engine.runtime / "transactions" / "after-state"
+    (transaction / "backups").mkdir(parents=True)
+    (transaction / "journal.json").write_text(json.dumps({
+        "schema_version": 1,
+        "status": "state_saved",
+        "paths": [str(spec), str(plan)],
+    }, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    engine.recover()
+    journal = json.loads((transaction / "journal.json").read_text(encoding="utf-8"))
+    assert journal["status"] == "committed"
+
+
+def test_external_edit_before_confirmation_is_not_overwritten(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    engine = CoreEngine.from_project(root, session_id_factory=lambda: "session-1")
+    _reach_awaiting(engine)
+    spec = root / "docs/specs/product.md"
+    external = spec.read_bytes() + b"\n# external edit\n"
+    spec.write_bytes(external)
+    with pytest.raises(DocumentConflictError):
+        engine.confirm_next(_event("confirm-1", "next_module_confirmed", "user"))
+    assert spec.read_bytes() == external
+```
+
+These four tests cover the three crash windows: failure inside `save_state` (documents rolled back), interruption after documents were applied but before state was saved (recover rolls back), interruption after state was saved but before the committed marker (recover marks committed), and an external edit that must never be overwritten.
 
 - [ ] **Step 4: Run baseline verification**
 
@@ -1775,16 +2358,16 @@ git add skills/spec-driven-development/SKILL.md tests/e2e/test_markdown_workflow
 git commit -m "test: prove core gated workflow"
 ```
 
-> **Implementation notes (Task 7 complete, core baseline finished):** `start` tolerates empty stdin (allow_empty) so roadmap verification commands run bare. CLI `--project` is accepted both before and after the subcommand (subparser uses SUPPRESS default). Never leave a real `.spec-driven/` inside `fixtures/markdown-project` — E2E tests copytree it and a stale state.json would resume instead of starting fresh. Adapter plans (Claude Code / Codex) must route every document mutation through `CoreEngine.confirm_next`; they never call `MarkdownAdapter` directly.
+> **Implementation notes (Task 8 complete, core baseline finished):** `start` tolerates empty stdin (allow_empty) so roadmap verification commands run bare. CLI `--project` is accepted both before and after the subcommand (subparser uses SUPPRESS default). Never leave a real `.spec-driven/` inside `fixtures/markdown-project` — E2E tests copytree it and a stale state.json would resume instead of starting fresh. Adapter plans (Claude Code / Codex) must route every document mutation through `CoreEngine.confirm_next`; they never call `MarkdownAdapter` directly.
 
 ## Baseline acceptance checklist
 
-- [x] Configured Markdown spec/plan are discovered without network access.
-- [x] Multiple candidates and unclear modules/tests stop with stable errors.
-- [x] Unit-only, regression-only, or any failed evidence blocks the checkpoint.
-- [x] Natural language cannot create confirmation or change documents.
-- [x] Exact user confirmation updates both spec and plan and activates the next module.
-- [x] Repeated event IDs and transactions are idempotent.
-- [x] Stale hashes and state-save failures preserve user content.
-- [x] Completing the last module produces `session_state="completed"` without a fabricated module.
-- [x] Audit events, transaction journals, state, and diagnostics stay under `.spec-driven/`.
+- [ ] Configured Markdown spec/plan are discovered without network access.
+- [ ] Multiple candidates and unclear modules/tests stop with stable errors.
+- [ ] Unit-only, regression-only, or any failed evidence blocks the checkpoint.
+- [ ] Natural language cannot create confirmation or change documents.
+- [ ] Exact user confirmation updates both spec and plan and activates the next module.
+- [ ] Repeated event IDs and transactions are idempotent.
+- [ ] Stale hashes and state-save failures preserve user content.
+- [ ] Completing the last module produces `session_state="completed"` without a fabricated module.
+- [ ] Audit events, transaction journals, state, and diagnostics stay under `.spec-driven/`.
