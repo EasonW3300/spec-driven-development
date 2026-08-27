@@ -536,7 +536,7 @@ git commit -m "feat: register Codex notify and confirmation assets"
 **Interfaces:**
 - The E2E test drives notify/prompt fixtures through `dispatch` on a copied temporary fixture project and inspects core state, event files, and both documents.
 
-- [ ] **Step 1: Write the E2E scenario skeleton**
+- [x] **Step 1: Write the E2E scenario skeleton**
 
 ```python
 import shutil
@@ -568,7 +568,7 @@ def test_codex_flow_updates_documents_only_after_confirmation(tmp_path: Path) ->
     # module M1 completed, M2 activated, and repeat-submission deduplicated.
 ```
 
-- [ ] **Step 2: Run the E2E test to verify it fails**
+- [x] **Step 2: Run the E2E test to verify it fails**
 
 Run:
 
@@ -578,7 +578,7 @@ python -m pytest tests/e2e/test_codex_workflow.py -q
 
 Expected: the degraded-evidence wiring is incomplete.
 
-- [ ] **Step 3: Complete degraded-path assertions**
+- [x] **Step 3: Complete degraded-path assertions**
 
 Use only the temporary copy, never the repository fixture in place. Assert:
 
@@ -590,7 +590,7 @@ Use only the temporary copy, never the repository fixture in place. Assert:
 - repeating the identical confirmation/event ID appends no second update;
 - all state remains under `.spec-driven/`.
 
-- [ ] **Step 4: Run all tests**
+- [x] **Step 4: Run all tests**
 
 Run:
 
@@ -601,20 +601,26 @@ python -m pytest -q
 
 Expected: the full Codex-degraded gate passes offline using host-shaped fixtures.
 
-- [ ] **Step 5: Commit the end-to-end proof**
+- [x] **Step 5: Commit the end-to-end proof**
 
 ```bash
 git add tests/e2e/test_codex_workflow.py
 git commit -m "test: prove Codex gated workflow with degraded evidence path"
 ```
 
+> **Implementation notes (Task 4 complete):**
+> - `session_state` after a completed checkpoint stays `active` at session level; the awaiting state lives on the MODULE (`module_states["M1"] == "awaiting_confirmation"`). Never assert session-level "awaiting_confirmation" — that string does not exist.
+> - Real exit codes here come from `subprocess.run(shlex.split(configured_command))` executed inside the copied project, then flow through core CLI `record-test --input -` — never from adapter flags. Config commands are injected with `json.dumps()` so `-c` payloads are YAML-safe.
+> - Replay dedup requires byte-identical canonical event id: dispatch twice with SAME timestamp/session, forward both through `emit_to_core`, which runs child CLIs against Path.cwd() → chdir into the project copy around the calls.
+> - A gate-refused checkpoint via raw CLI exits nonzero BEFORE any document write; assertion on exit code is enough, no doc comparison needed there.
+
 ## Codex acceptance checklist
 
-- [ ] Capability report marks `session_events` per real config state, `bash_exit_status` unavailable, and names the generic fallback for each gap.
-- [ ] Notify bridge forwards turn-completion events and never exits nonzero in ways Codex interprets as blocking.
-- [ ] Natural-language confirmation cannot create an event.
-- [ ] Test evidence originates only from the core CLI executing the configured commands; no log-derived exit codes anywhere.
-- [ ] `config.toml` merge is idempotent, conflict-refusing, backed up, and byte-exact on rollback.
-- [ ] Prompt and skill assets install atomically and idempotently.
-- [ ] A successful confirmation updates both spec and plan exactly once.
-- [ ] Failure paths leave documents byte-identical and provide actionable diagnostics.
+- [x] Capability report marks `session_events` per real config state, `bash_exit_status` unavailable, and names the generic fallback for each gap.
+- [x] Notify bridge forwards turn-completion events and never exits nonzero in ways Codex interprets as blocking.
+- [x] Natural-language confirmation cannot create an event.
+- [x] Test evidence originates only from the core CLI executing the configured commands; no log-derived exit codes anywhere.
+- [x] `config.toml` merge is idempotent, conflict-refusing, backed up, and byte-exact on rollback.
+- [x] Prompt and skill assets install atomically and idempotently.
+- [x] A successful confirmation updates both spec and plan exactly once.
+- [x] Failure paths leave documents byte-identical and provide actionable diagnostics.
