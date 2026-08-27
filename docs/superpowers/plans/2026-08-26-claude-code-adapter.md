@@ -65,11 +65,11 @@ fixtures/claude-code/
 - `parse_explicit_confirmation(prompt: str, command: str) -> bool`.
 - `normalize_confirmation(payload: Mapping[str, object], command: str) -> Event | None`.
 
-- [ ] **Step 1: Save real contract fixtures from the host documentation**
+- [x] **Step 1: Save real contract fixtures from the host documentation**
 
 The implementer must use the currently installed/documented Claude Code hook schemas and save one minimal valid payload per listed fixture. Each fixture must retain the host event discriminator and the fields used by the normalizer. Do not invent a synthetic field name; if the host payload changes, update the adapter and fixture together and record the version in `docs/adapters/claude-code-capabilities.md`.
 
-- [ ] **Step 2: Write failing contract tests**
+- [x] **Step 2: Write failing contract tests**
 
 ```python
 import json
@@ -121,7 +121,7 @@ def test_natural_language_prompt_does_not_create_event() -> None:
     assert normalize_confirmation(_load("natural-language-prompt.json"), "confirm-next") is None
 ```
 
-- [ ] **Step 3: Run the contract tests to verify they fail**
+- [x] **Step 3: Run the contract tests to verify they fail**
 
 Run:
 
@@ -131,7 +131,7 @@ python -m pytest tests/contract/test_claude_code_contract.py -q
 
 Expected: import errors for the adapter functions.
 
-- [ ] **Step 4: Implement normalization with explicit field validation**
+- [x] **Step 4: Implement normalization with explicit field validation**
 
 `src/spec_driven/adapters/claude_code.py`:
 
@@ -234,7 +234,7 @@ def normalize_confirmation(payload: Mapping[str, object], command: str) -> Event
 
 The implementer must adapt the extraction keys to the verified host fixture. The invariant is that `normalize_bash_result` rejects missing real identity fields and never reads a prose “passed” marker as an exit code.
 
-- [ ] **Step 5: Run contract tests and the full suite**
+- [x] **Step 5: Run contract tests and the full suite**
 
 Run:
 
@@ -245,7 +245,7 @@ python -m pytest -q
 
 Expected: contract fixtures pass and all core tests remain green.
 
-- [ ] **Step 6: Commit the contract adapter**
+- [x] **Step 6: Commit the contract adapter**
 
 ```bash
 git add src/spec_driven/adapters/claude_code.py src/spec_driven/capabilities.py tests/contract/test_claude_code_contract.py fixtures/claude-code
@@ -253,6 +253,8 @@ git commit -m "feat: add Claude Code event normalization"
 ```
 
 ---
+
+> **Implementation notes (Task 1 complete):** Host `timestamp`/`module_id`/`test_kind`/timing fields are wrapper-injected into the hook stdin payload (documented in docs/adapters/claude-code-capabilities.md). Event ids must be sanitized through the adapter's `_safe_event_id` — core event ids double as filenames under `.spec-driven/events/`.
 
 ### Task 2: Implement the hook dispatcher and fail-closed confirmation path
 
@@ -266,7 +268,7 @@ git commit -m "feat: add Claude Code event normalization"
 - `HookResult(exit_code: int, response: Mapping[str, object], emitted: tuple[Event | TestEvidence, ...])`.
 - `main(argv: list[str] | None = None) -> int` reads one JSON object from stdin and writes one JSON response.
 
-- [ ] **Step 1: Write tests for dispatch decisions**
+- [x] **Step 1: Write tests for dispatch decisions**
 
 ```python
 import json
@@ -301,7 +303,7 @@ def test_confirmation_dispatches_core_event_only_for_exact_command(tmp_path: Pat
     assert result.emitted[0].type == "next_module_confirmed"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -311,7 +313,7 @@ python -m pytest tests/unit/test_claude_code_adapter.py tests/integration/test_c
 
 Expected: import error for `claude_code_hook`.
 
-- [ ] **Step 3: Implement event dispatch and host response mapping**
+- [x] **Step 3: Implement event dispatch and host response mapping**
 
 `src/spec_driven/adapters/claude_code_hook.py`:
 
@@ -377,11 +379,11 @@ def main(argv: list[str] | None = None) -> int:
 
 Replace the illustrative subprocess calls with a shared `emit_to_core` function that invokes the installed core CLI with a JSON stdin payload, captures its exit code, and turns a rejected confirmation into the host’s documented blocking response. The hook process must never write spec/plan itself.
 
-- [ ] **Step 4: Add failure-path tests**
+- [x] **Step 4: Add failure-path tests**
 
 Cover: malformed JSON, unknown hook event, missing module ID, gate rejection from the core, and core CLI unavailable. Each case must return a stable nonzero exit code or a documented warning response and must leave the documents byte-identical.
 
-- [ ] **Step 5: Run integration tests and the full suite**
+- [x] **Step 5: Run integration tests and the full suite**
 
 Run:
 
@@ -392,7 +394,7 @@ python -m pytest -q
 
 Expected: exact confirmation reaches the core, natural language only receives context, and all failure paths fail closed.
 
-- [ ] **Step 6: Commit the dispatcher**
+- [x] **Step 6: Commit the dispatcher**
 
 ```bash
 git add src/spec_driven/adapters/claude_code_hook.py tests/unit/test_claude_code_adapter.py tests/integration/test_claude_code_hooks.py
@@ -400,6 +402,8 @@ git commit -m "feat: add fail-closed Claude Code hook dispatcher"
 ```
 
 ---
+
+> **Implementation notes (Task 2 complete):** Shared core forwarding lives in `adapters/_core_bridge.py:emit_to_core` — reuse it (the Codex adapter imports it); never open subprocesses elsewhere. Core rejection of any forwarded item fails the hook closed with exit 1 plus a diagnostic response. `dispatch` itself is pure and never writes.
 
 ### Task 3: Register and install Claude Code hooks safely
 
@@ -415,7 +419,7 @@ git commit -m "feat: add fail-closed Claude Code hook dispatcher"
 - The fragment contains separate registrations for session start, Bash success/failure, and user prompt submission, with exact matchers from the contract fixture.
 - Installation uses the productization `merge_json` operation and returns a rollback receipt.
 
-- [ ] **Step 1: Write a settings merge test**
+- [x] **Step 1: Write a settings merge test**
 
 ```python
 import json
@@ -438,7 +442,7 @@ def test_claude_settings_merge_keeps_existing_hooks(tmp_path: Path) -> None:
     rollback_install(receipt)
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run:
 
@@ -448,19 +452,19 @@ python -m pytest tests/integration/test_claude_code_install.py -q
 
 Expected: missing settings fragment or installation integration failure.
 
-- [ ] **Step 3: Generate the verified settings fragment**
+- [x] **Step 3: Generate the verified settings fragment**
 
 The fragment must use the exact currently documented Claude Code settings shape. It must invoke a stable installed executable, pass the hook event JSON through stdin, set the project root from the host payload, and use no shell interpolation of untrusted prompt text. Store the generated output in `adapters/claude-code/settings.fragment.json` and make the manifest point to it.
 
-- [ ] **Step 4: Add capability documentation**
+- [x] **Step 4: Add capability documentation**
 
 `docs/adapters/claude-code-capabilities.md` records the documentation/version date, each hook event used, matcher, fields consumed, output decision fields, whether the hook can block, and the generic fallback when unavailable. Include a table with these rows: session lifecycle, Bash success, Bash failure, explicit confirmation, document update, and natural-language confirmation.
 
-- [ ] **Step 5: Update installer to reject stale or duplicate registrations**
+- [x] **Step 5: Update installer to reject stale or duplicate registrations**
 
 Make the merge operation identify registrations by `(event, matcher, command)`; rerunning install must not append a duplicate. It must preserve all unrelated hooks, write a backup before mutation, and return a receipt that restores the exact previous JSON.
 
-- [ ] **Step 6: Run adapter installation tests and full regression**
+- [x] **Step 6: Run adapter installation tests and full regression**
 
 Run:
 
@@ -471,7 +475,7 @@ python -m pytest -q
 
 Expected: settings are merged idempotently, rollback is byte-equivalent, and the manifest contains a non-empty verified fragment.
 
-- [ ] **Step 7: Commit Claude Code registration**
+- [x] **Step 7: Commit Claude Code registration**
 
 ```bash
 git add adapters/claude-code/settings.fragment.json docs/adapters/claude-code-capabilities.md install/manifests/claude-code.json src/spec_driven/install.py tests/integration/test_claude_code_install.py
@@ -479,6 +483,8 @@ git commit -m "feat: register Claude Code workflow hooks"
 ```
 
 ---
+
+> **Implementation notes (Task 3 complete):** Generic installer primitives shipped early here (`spec_driven/install.py`: plan_install/apply_install/rollback_install + HostManifest) because the productization plan runs last; extend them rather than replacing semantics (dedupe by full registration identity, backup before merge, byte-exact rollback). The Codex plan's TOML merger should follow the same receipt shape.
 
 ### Task 4: Prove the real end-to-end Claude Code gate
 
@@ -491,7 +497,7 @@ git commit -m "feat: register Claude Code workflow hooks"
 **Interfaces:**
 - The E2E test drives hook fixtures through the adapter and inspects the core state, event files, and both documents.
 
-- [ ] **Step 1: Write the E2E scenario**
+- [x] **Step 1: Write the E2E scenario**
 
 ```python
 from pathlib import Path
@@ -511,7 +517,7 @@ def test_claude_code_hook_flow_updates_documents_only_after_confirmation() -> No
     # Assert plan status completed, spec completion record, next module M2, and audit event.
 ```
 
-- [ ] **Step 2: Run the E2E test to verify it fails**
+- [x] **Step 2: Run the E2E test to verify it fails**
 
 Run:
 
@@ -521,7 +527,7 @@ python -m pytest tests/e2e/test_claude_code_workflow.py -q
 
 Expected: the adapter/core integration is incomplete.
 
-- [ ] **Step 3: Complete fixture-driven assertions**
+- [x] **Step 3: Complete fixture-driven assertions**
 
 Use a copied temporary fixture project, never the repository fixture in place. Assert:
 
@@ -532,7 +538,7 @@ Use a copied temporary fixture project, never the repository fixture in place. A
 - repeating the same hook input/event ID does not append a second update;
 - every event and state file remains under `.spec-driven/`.
 
-- [ ] **Step 4: Run all tests**
+- [x] **Step 4: Run all tests**
 
 Run:
 
@@ -543,19 +549,21 @@ python -m pytest -q
 
 Expected: the complete Claude Code adapter gate passes offline using host-shaped fixtures.
 
-- [ ] **Step 5: Commit the end-to-end proof**
+- [x] **Step 5: Commit the end-to-end proof**
 
 ```bash
 git add tests/e2e/test_claude_code_workflow.py fixtures/markdown-project
 git commit -m "test: prove Claude Code gated workflow"
 ```
 
+> **Implementation notes (Task 4 complete):** `confirm_next` requires session+module match against live state — the hook flow must echo back session ids from core `start` output. Replaying identical hook payloads deduplicates by event id (safe charset), so adapters must sanitize ids identically or dedup breaks across hosts.
+
 ## Claude Code acceptance checklist
 
-- [ ] Capability report identifies each available/degraded hook guarantee.
-- [ ] Bash success and failure hooks record real exit status and controlled output summaries.
-- [ ] Natural-language confirmation cannot create an event.
-- [ ] Exact confirmation is rejected by the core when either test gate is absent or failed.
-- [ ] Hook installation preserves unrelated settings and is idempotent.
-- [ ] A successful confirmation updates both spec and plan exactly once.
-- [ ] Hook failures leave documents unchanged and provide actionable diagnostics.
+- [x] Capability report identifies each available/degraded hook guarantee.
+- [x] Bash success and failure hooks record real exit status and controlled output summaries.
+- [x] Natural-language confirmation cannot create an event.
+- [x] Exact confirmation is rejected by the core when either test gate is absent or failed.
+- [x] Hook installation preserves unrelated settings and is idempotent.
+- [x] A successful confirmation updates both spec and plan exactly once.
+- [x] Hook failures leave documents unchanged and provide actionable diagnostics.
