@@ -418,7 +418,7 @@ git commit -m "feat: add fail-closed Codex notify bridge"
 - Produces: `copy_assets(source_dir: Path, codex_home: Path) -> None` — copies `prompts/` files into `<codex_home>/prompts/` and `skills/` trees into `<codex_home>/skills/` atomically (temp file + rename), idempotent (same bytes → no-op).
 - The manifest `install/manifests/codex.json` declares host `"codex"`, the config fragment, the prompt/skill assets, and the verify command (`spec-driven doctor --host codex`).
 
-- [ ] **Step 1: Write the TOML merge and asset-copy tests**
+- [x] **Step 1: Write the TOML merge and asset-copy tests**
 
 ```python
 import shutil
@@ -476,7 +476,7 @@ def test_copy_assets_is_idempotent(tmp_path: Path) -> None:
     assert first == second
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run:
 
@@ -486,7 +486,7 @@ python -m pytest tests/integration/test_codex_install.py -q
 
 Expected: import error for `merge_toml_fragment`/`copy_assets`.
 
-- [ ] **Step 3: Author the fragment, prompt, and skill assets**
+- [x] **Step 3: Author the fragment, prompt, and skill assets**
 
 `adapters/codex/config.fragment.toml` contains exactly the verified notify key:
 
@@ -497,11 +497,11 @@ notify = ["python", "<absolute path to installed codex_hook shim>"]
 
 `adapters/codex/prompts/confirm-next.md` instructs the model to invoke `spec-driven confirm-next` with no free-text alteration and to relay the CLI's result verbatim. `adapters/codex/skills/spec-driven-development/SKILL.md` mirrors the generic fallback skill: start/status/checkpoint/confirm-next/recover/doctor semantics plus the statement that test evidence in Codex mode is only ever produced by the core CLI executing the commands itself. Adapt prompt/skill frontmatter to the verified current format (name, description keys) — wrong frontmatter means the host ignores the file, so verify with an installed Codex binary if available and note the checked version.
 
-- [ ] **Step 4: Add capability documentation**
+- [x] **Step 4: Add capability documentation**
 
 `docs/adapters/codex-capabilities.md` records the docs/version date checked in Task 1 Step 1 and a table with rows: turn lifecycle, Bash success/failure capture, explicit confirmation, document update, and natural-language confirmation — each with mechanism, fields consumed, availability, and generic fallback. State plainly that Bash exit codes are unavailable via Codex events and that the gate therefore relies on core CLI-executed tests.
 
-- [ ] **Step 5: Run installation tests and full regression**
+- [x] **Step 5: Run installation tests and full regression**
 
 Run:
 
@@ -512,7 +512,7 @@ python -m pytest -q
 
 Expected: merge preserves unrelated keys and comments, idempotency holds, conflicting `notify` values are refused with guidance, rollback is byte-equivalent, and assets land under the right directories.
 
-- [ ] **Step 6: Commit Codex registration**
+- [x] **Step 6: Commit Codex registration**
 
 ```bash
 git add adapters/codex install/manifests/codex.json src/spec_driven/install.py tests/integration/test_codex_install.py
@@ -520,6 +520,13 @@ git commit -m "feat: register Codex notify and confirmation assets"
 ```
 
 ---
+
+> **Implementation notes (Task 3 complete):**
+> - Receipt type is `TomlInstallReceipt` and rollback fn is `rollback_toml` — plan said `InstallReceipt`/`rollback`, but those names are taken by the JSON installer; renaming keeps Claude Code tests untouched. Same semantics: `applied_keys == ()` ⇒ no-op, `backup_path is None` ⇒ file was created by us, so rollback deletes it.
+> - TOML merge is TEXT-append based (`tomllib` read-only + managed block appended); comments/other keys survive byte-exact without a round-trip parser. If a future task needs to REMOVE or rewrite managed TOML values, it must parse→rewrite whole-file because positions inside the block shift.
+> - Conflicting existing key value raises BEFORE any write — no partial mutation.
+> - `copy_assets` treats identical bytes as no-op (idempotency by content, not timestamp), deletes stale differing files first, uses temp+os.replace per file.
+> - Capability doc (Step 4 of this task) was authored at Task 1 time alongside the contract tests — keep them in sync when Codex ships new hook surfaces.
 
 ### Task 4: Prove the real end-to-end Codex gate
 
