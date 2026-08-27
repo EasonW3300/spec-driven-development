@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling>=1.25,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "spec-driven-development"
+version = "0.1.0"
+description = "Host-neutral spec-driven development workflow engine"
+requires-python = ">=3.11"
+dependencies = ["ruamel.yaml>=0.18,<0.19"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<9"]
+
+[project.scripts]
+spec-driven = "spec_driven.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/spec_driven"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
