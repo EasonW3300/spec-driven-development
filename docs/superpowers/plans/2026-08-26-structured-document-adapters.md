@@ -55,7 +55,7 @@ tests/e2e/test_json_workflow.py
 - `DocumentRegistry.for_path(path: Path, enabled: tuple[str, ...]) -> DocumentAdapter` requires exactly one enabled suffix match.
 - `DocumentRegistry.enabled_suffixes(enabled: tuple[str, ...]) -> frozenset[str]` supports discovery.
 
-- [ ] **Step 1: Write failing registry tests**
+- [x] **Step 1: Write failing registry tests**
 
 ```python
 from pathlib import Path
@@ -96,7 +96,7 @@ def test_registry_rejects_disabled_and_duplicate_adapters() -> None:
         registry.for_path(Path("plan.stub"), ("markdown",))
 ```
 
-- [ ] **Step 2: Run tests and verify the registry is missing**
+- [x] **Step 2: Run tests and verify the registry is missing**
 
 ```bash
 python -m pytest tests/unit/test_document_registry.py tests/contract/test_document_adapter.py -q
@@ -104,7 +104,7 @@ python -m pytest tests/unit/test_document_registry.py tests/contract/test_docume
 
 Expected: import error for `DocumentRegistry`; the baseline Markdown contract remains green.
 
-- [ ] **Step 3: Implement duplicate-safe registration and suffix selection**
+- [x] **Step 3: Implement duplicate-safe registration and suffix selection**
 
 `src/spec_driven/documents/registry.py`:
 
@@ -147,7 +147,7 @@ class DocumentRegistry:
         )
 ```
 
-- [ ] **Step 4: Extend the contract test with registry dispatch**
+- [x] **Step 4: Extend the contract test with registry dispatch**
 
 Append this assertion to `tests/contract/test_document_adapter.py`:
 
@@ -165,7 +165,7 @@ def test_baseline_markdown_adapter_dispatches_by_contract() -> None:
     assert callable(adapter.apply)
 ```
 
-- [ ] **Step 5: Run tests and commit the registry**
+- [x] **Step 5: Run tests and commit the registry**
 
 ```bash
 python -m pytest tests/unit/test_document_registry.py tests/contract/test_document_adapter.py -q
@@ -175,6 +175,10 @@ git commit -m "feat: register document format plugins"
 ```
 
 ---
+
+> **Implementation notes (Task 1 complete):**
+> - `for_path` failure message says "no enabled document adapter" even when suffix matches a DISABLED adapter or none — remediation points at `documents.adapters` config. Tests match on that exact phrase.
+> - `enabled_suffixes` raises on unknown enabled names BEFORE returning suffixes; discovery (Task 5) depends on this ordering to fail fast on bad config.
 
 ### Task 2: Add shared structured-document validation and conversion
 
