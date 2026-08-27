@@ -1775,14 +1775,16 @@ git add skills/spec-driven-development/SKILL.md tests/e2e/test_markdown_workflow
 git commit -m "test: prove core gated workflow"
 ```
 
+> **Implementation notes (Task 7 complete, core baseline finished):** `start` tolerates empty stdin (allow_empty) so roadmap verification commands run bare. CLI `--project` is accepted both before and after the subcommand (subparser uses SUPPRESS default). Never leave a real `.spec-driven/` inside `fixtures/markdown-project` — E2E tests copytree it and a stale state.json would resume instead of starting fresh. Adapter plans (Claude Code / Codex) must route every document mutation through `CoreEngine.confirm_next`; they never call `MarkdownAdapter` directly.
+
 ## Baseline acceptance checklist
 
-- [ ] Configured Markdown spec/plan are discovered without network access.
-- [ ] Multiple candidates and unclear modules/tests stop with stable errors.
-- [ ] Unit-only, regression-only, or any failed evidence blocks the checkpoint.
-- [ ] Natural language cannot create confirmation or change documents.
-- [ ] Exact user confirmation updates both spec and plan and activates the next module.
-- [ ] Repeated event IDs and transactions are idempotent.
-- [ ] Stale hashes and state-save failures preserve user content.
-- [ ] Completing the last module produces `session_state="completed"` without a fabricated module.
-- [ ] Audit events, transaction journals, state, and diagnostics stay under `.spec-driven/`.
+- [x] Configured Markdown spec/plan are discovered without network access.
+- [x] Multiple candidates and unclear modules/tests stop with stable errors.
+- [x] Unit-only, regression-only, or any failed evidence blocks the checkpoint.
+- [x] Natural language cannot create confirmation or change documents.
+- [x] Exact user confirmation updates both spec and plan and activates the next module.
+- [x] Repeated event IDs and transactions are idempotent.
+- [x] Stale hashes and state-save failures preserve user content.
+- [x] Completing the last module produces `session_state="completed"` without a fabricated module.
+- [x] Audit events, transaction journals, state, and diagnostics stay under `.spec-driven/`.
