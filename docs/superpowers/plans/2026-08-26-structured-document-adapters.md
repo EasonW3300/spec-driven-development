@@ -536,7 +536,7 @@ git commit -m "feat: add round-trip YAML documents"
 - `JsonAdapter.name == "json"` and suffix `.json`.
 - JSON output uses `ensure_ascii=False`, `indent=2`, and a final newline; input key order is preserved.
 
-- [ ] **Step 1: Write failing JSON preservation and idempotence tests**
+- [x] **Step 1: Write failing JSON preservation and idempotence tests**
 
 ```python
 import json
@@ -572,7 +572,7 @@ def test_json_update_preserves_unknown_fields_and_is_idempotent(tmp_path: Path) 
     assert path.read_text(encoding="utf-8") == first
 ```
 
-- [ ] **Step 2: Run the JSON test to verify it fails**
+- [x] **Step 2: Run the JSON test to verify it fails**
 
 Run:
 
@@ -582,7 +582,7 @@ python -m pytest tests/unit/test_json_document.py -q
 
 Expected: import error for `JsonAdapter`.
 
-- [ ] **Step 3: Implement the JSON adapter**
+- [x] **Step 3: Implement the JSON adapter**
 
 `src/spec_driven/documents/json.py`:
 
@@ -628,11 +628,11 @@ class JsonAdapter:
         apply_atomic(patch)
 ```
 
-- [ ] **Step 4: Add JSON fixture files**
+- [x] **Step 4: Add JSON fixture files**
 
 Use valid UTF-8 JSON with the same `spec_driven` shape as the YAML fixture. Set `documents.adapters` to `[json]` and explicit document paths in `fixtures/json-project/spec-driven.config.yaml`.
 
-- [ ] **Step 5: Run JSON tests and regression**
+- [x] **Step 5: Run JSON tests and regression**
 
 Run:
 
@@ -643,7 +643,7 @@ python -m pytest -q
 
 Expected: all tests pass with deterministic non-ASCII output.
 
-- [ ] **Step 6: Commit JSON support**
+- [x] **Step 6: Commit JSON support**
 
 ```bash
 git add src/spec_driven/documents/json.py fixtures/json-project tests/unit/test_json_document.py
@@ -651,6 +651,11 @@ git commit -m "feat: add deterministic JSON documents"
 ```
 
 ---
+
+> **Implementation notes (Task 4 complete):**
+> - JSON output is `json.dumps(..., ensure_ascii=False, indent=2) + "\n"` — deterministic, Unicode preserved. Idempotence holds because re-encoding the already-updated doc is byte-stable.
+> - Non-object root raises StateConflictError "JSON root must be an object" (message contains "object"/"mapping" — both tests and code reference this).
+> - JSON fixtures carry `ensure_ascii=False` Chinese prose; any future re-formatting must keep `ensure_ascii=False` or round-trip tests will fail.
 
 ### Task 5: Wire format plugins into discovery and the engine
 
