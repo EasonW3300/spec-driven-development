@@ -385,7 +385,7 @@ git commit -m "feat: add structured document conversion"
 - `YamlAdapter.name == "yaml"` and suffixes `.yaml`, `.yml`.
 - Uses `YAML(typ="rt")`, `preserve_quotes = True`, and the core `apply_atomic` writer.
 
-- [ ] **Step 1: Write failing round-trip and hash tests**
+- [x] **Step 1: Write failing round-trip and hash tests**
 
 ```python
 from pathlib import Path
@@ -430,7 +430,7 @@ def test_yaml_update_preserves_comments_and_unknown_keys(tmp_path: Path) -> None
     assert "status: completed" in content
 ```
 
-- [ ] **Step 2: Run the YAML tests to verify they fail**
+- [x] **Step 2: Run the YAML tests to verify they fail**
 
 Run:
 
@@ -440,7 +440,7 @@ python -m pytest tests/unit/test_yaml_document.py -q
 
 Expected: import error for `YamlAdapter`.
 
-- [ ] **Step 3: Implement the YAML adapter**
+- [x] **Step 3: Implement the YAML adapter**
 
 `src/spec_driven/documents/yaml.py`:
 
@@ -493,11 +493,11 @@ class YamlAdapter:
         apply_atomic(patch)
 ```
 
-- [ ] **Step 4: Add fixture files with a two-module managed section**
+- [x] **Step 4: Add fixture files with a two-module managed section**
 
 Use the same two modules and fields from `test_structured_document_adapter.py`. Set `spec.paths` to `docs/spec.yaml`, `plan.paths` to `docs/plan.yaml`, and `documents.adapters` to `[yaml]` in `fixtures/yaml-project/spec-driven.config.yaml`.
 
-- [ ] **Step 5: Run YAML tests and the full regression suite**
+- [x] **Step 5: Run YAML tests and the full regression suite**
 
 Run:
 
@@ -508,7 +508,7 @@ python -m pytest -q
 
 Expected: YAML comment/quote preservation and all prior behavior pass.
 
-- [ ] **Step 6: Commit YAML support**
+- [x] **Step 6: Commit YAML support**
 
 ```bash
 git add src/spec_driven/documents/yaml.py fixtures/yaml-project tests/unit/test_yaml_document.py
@@ -516,6 +516,12 @@ git commit -m "feat: add round-trip YAML documents"
 ```
 
 ---
+
+> **Implementation notes (Task 3 complete):**
+> - `apply_atomic` was added to `patches.py` as the shared writer (hash re-check + temp file + fsync + rename); MarkdownAdapter still uses its own inline apply — consolidating it is optional cleanup, do NOT change Markdown bytes behavior casually.
+> - ruamel `YAML(typ="rt")` must dump to StringIO, not a path; the patch carries TEXT and atomicity comes from `apply_atomic`.
+> - YAML fixtures deliberately mix quoting styles (single/double-quoted scalars, trailing comments) — these bytes are load-bearing for round-trip assertions. Never "tidy" fixture formatting.
+> - Stale-hash raises StateConflictError before parse (fail fast) — error text contains "stale".
 
 ### Task 4: Implement deterministic JSON support
 
