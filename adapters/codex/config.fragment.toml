@@ -1,0 +1,3 @@
+# managed by spec-driven-development; see docs/adapters/codex-capabilities.md
+# install/manifests/codex.json declares this key; do not hand-edit the notify line.
+notify = ["python", "-m", "spec_driven.adapters.codex_hook"]

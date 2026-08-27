@@ -1,0 +1,12 @@
+{
+  "adapter_package": "spec_driven.adapters.codex",
+  "assets": {
+    "prompts_dir": "adapters/codex/prompts",
+    "skills_dir": "adapters/codex/skills"
+  },
+  "config_fragment": "adapters/codex/config.fragment.toml",
+  "host": "codex",
+  "schema_version": 1,
+  "skill_source": "skills/spec-driven-development",
+  "verify_command": "spec-driven doctor --host codex"
+}
