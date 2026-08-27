@@ -191,7 +191,7 @@ git commit -m "feat: register document format plugins"
 - `apply_structured_update(root: MutableMapping[str, object], update: DocumentUpdate) -> None` mutates only `root["spec_driven"]`.
 - Raises `ConfigError` for missing, duplicate, malformed, or non-contiguous module definitions.
 
-- [ ] **Step 1: Write failing conversion tests**
+- [x] **Step 1: Write failing conversion tests**
 
 ```python
 import pytest
@@ -262,7 +262,7 @@ def test_duplicate_module_ids_are_rejected() -> None:
         parse_structured_modules(root)
 ```
 
-- [ ] **Step 2: Run the contract test to verify it fails**
+- [x] **Step 2: Run the contract test to verify it fails**
 
 Run:
 
@@ -272,7 +272,7 @@ python -m pytest tests/contract/test_structured_document_adapter.py -q
 
 Expected: import error for `documents.structured`.
 
-- [ ] **Step 3: Implement strict structured parsing**
+- [x] **Step 3: Implement strict structured parsing**
 
 `src/spec_driven/documents/structured.py`:
 
@@ -348,7 +348,7 @@ def apply_structured_update(
     managed["active_module_id"] = update.next_module_id
 ```
 
-- [ ] **Step 4: Run the structured contract tests**
+- [x] **Step 4: Run the structured contract tests**
 
 Run:
 
@@ -358,7 +358,7 @@ python -m pytest tests/contract/test_structured_document_adapter.py -q
 
 Expected: all tests pass.
 
-- [ ] **Step 5: Commit shared structured conversion**
+- [x] **Step 5: Commit shared structured conversion**
 
 ```bash
 git add src/spec_driven/documents/structured.py tests/contract/test_structured_document_adapter.py
@@ -366,6 +366,11 @@ git commit -m "feat: add structured document conversion"
 ```
 
 ---
+
+> **Implementation notes (Task 2 complete):**
+> - `parse_structured_modules` returns modules SORTED by order and rejects non-contiguous/missing `order` — module ids come back in execution order; yaml/json adapters must not re-sort.
+> - ruamel round-trip objects are dict subclasses, so `isinstance(raw, Mapping)`/`MutableMapping` checks cover both plain python data and rt-CommentedMap; do NOT tighten to `dict` or YAML round-trip breaks.
+> - `apply_structured_update` writes `DocumentUpdate.evidence_summary` into the doc-side `evidence` list field; keep that name mapping when touching this.
 
 ### Task 3: Implement comment-preserving YAML support
 
