@@ -29,3 +29,13 @@ class CapabilityReport:
             "adapter_version": self.adapter_version,
             "capabilities": [asdict(item) for item in self.capabilities],
         }
+
+
+@dataclass(frozen=True)
+class HostManifest:
+    schema_version: int
+    host: str
+    adapter_package: str
+    skill_source: str
+    settings_path: str
+    settings_fragment: dict[str, object]

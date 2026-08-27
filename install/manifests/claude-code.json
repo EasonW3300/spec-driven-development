@@ -1,0 +1,8 @@
+{
+  "adapter_package": "spec_driven.adapters.claude_code",
+  "host": "claude-code",
+  "schema_version": 1,
+  "settings_fragment": "adapters/claude-code/settings.fragment.json",
+  "settings_path": ".claude/settings.json",
+  "skill_source": "skills/spec-driven-development"
+}
