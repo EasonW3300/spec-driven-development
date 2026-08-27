@@ -1,0 +1,6 @@
+# user prefs preserved by installer
+model = "o5"
+approval_policy = "never"
+
+# managed block inserted by spec-driven installer
+notify = ["python", "-m", "spec_driven.adapters.codex_hook"]

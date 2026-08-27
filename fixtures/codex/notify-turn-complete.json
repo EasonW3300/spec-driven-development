@@ -1,0 +1,8 @@
+{
+  "type": "agent-turn-complete",
+  "turn_id": "turn-9f2",
+  "session_id": "s1",
+  "timestamp": "2026-08-26T00:00:00Z",
+  "cwd": "/proj",
+  "_note": "type/turn_id are the documented notify payload; session_id/timestamp/cwd are wrapper-injected identity fields per docs/adapters/codex-capabilities.md"
+}

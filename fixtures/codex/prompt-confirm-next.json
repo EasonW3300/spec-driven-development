@@ -1,0 +1,7 @@
+{
+  "type": "user-prompt",
+  "session_id": "s1",
+  "timestamp": "2026-08-26T00:01:00Z",
+  "module_id": "M1",
+  "prompt": "confirm-next"
+}
