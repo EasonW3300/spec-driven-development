@@ -73,7 +73,7 @@ tests/e2e/
 - Produces `spec_driven.__version__: str`.
 - Produces `spec_driven.cli.main(argv: list[str] | None = None) -> int`.
 
-- [ ] **Step 1: Write the failing package test**
+- [x] **Step 1: Write the failing package test**
 
 ```python
 from spec_driven import __version__
@@ -83,7 +83,7 @@ def test_package_exposes_version() -> None:
     assert __version__ == "0.1.0"
 ```
 
-- [ ] **Step 2: Run it and verify the package is missing**
+- [x] **Step 2: Run it and verify the package is missing**
 
 Run:
 
@@ -93,7 +93,7 @@ python -m pytest tests/unit/test_package.py -q
 
 Expected: `ModuleNotFoundError: No module named 'spec_driven'`.
 
-- [ ] **Step 3: Add build configuration and the minimal package**
+- [x] **Step 3: Add build configuration and the minimal package**
 
 `pyproject.toml`:
 
@@ -167,7 +167,7 @@ __pycache__/
 .spec-driven/
 ```
 
-- [ ] **Step 4: Install editable dependencies and pass the test**
+- [x] **Step 4: Install editable dependencies and pass the test**
 
 Run:
 
@@ -178,7 +178,7 @@ python -m pytest tests/unit/test_package.py -q
 
 Expected: `1 passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pyproject.toml .gitignore src tests/conftest.py tests/unit/test_package.py
@@ -186,6 +186,8 @@ git commit -m "chore: bootstrap spec-driven package"
 ```
 
 ---
+
+> **Implementation notes (Task 1 complete):** Tests/CLI must run through the uv-managed `.venv` (Python 3.12): `.venv/bin/python -m pytest -q` and `.venv/bin/spec-driven`. System `python` is absent and system `python3` is 3.9.
 
 ### Task 2: Define domain values, errors, and layered configuration
 
@@ -204,7 +206,7 @@ git commit -m "chore: bootstrap spec-driven package"
 - `load_config(project_root: Path, global_path: Path | None = None, session_override: Mapping[str, object] | None = None) -> ProjectConfig`.
 - Every raised `SpecDrivenError` has stable `code`, `retryable`, and `remediation` fields.
 
-- [ ] **Step 1: Write failing immutability and precedence tests**
+- [x] **Step 1: Write failing immutability and precedence tests**
 
 ```python
 from pathlib import Path
@@ -237,7 +239,7 @@ def test_project_and_session_override_global_config(tmp_path: Path) -> None:
     assert session.unit_test_command == "session-unit"
 ```
 
-- [ ] **Step 2: Run tests and verify imports fail**
+- [x] **Step 2: Run tests and verify imports fail**
 
 Run:
 
@@ -247,7 +249,7 @@ python -m pytest tests/unit/test_models.py tests/unit/test_config.py -q
 
 Expected: import errors for missing modules.
 
-- [ ] **Step 3: Implement immutable domain values**
+- [x] **Step 3: Implement immutable domain values**
 
 `src/spec_driven/models.py`:
 
@@ -352,7 +354,7 @@ class StateSnapshot:
     processed_event_ids: frozenset[str]
 ```
 
-- [ ] **Step 4: Add the shared capability report model**
+- [x] **Step 4: Add the shared capability report model**
 
 `tests/unit/test_capabilities.py`:
 
@@ -401,7 +403,7 @@ class CapabilityReport:
         }
 ```
 
-- [ ] **Step 5: Implement stable errors**
+- [x] **Step 5: Implement stable errors**
 
 `src/spec_driven/errors.py`:
 
@@ -443,7 +445,7 @@ class RecoveryRequiredError(SpecDrivenError):
     code = "RECOVERY_REQUIRED"
 ```
 
-- [ ] **Step 6: Implement layered YAML configuration**
+- [x] **Step 6: Implement layered YAML configuration**
 
 `src/spec_driven/config.py`:
 
@@ -517,7 +519,7 @@ def load_config(
     )
 ```
 
-- [ ] **Step 7: Pass focused and full tests, then commit**
+- [x] **Step 7: Pass focused and full tests, then commit**
 
 ```bash
 python -m pytest tests/unit/test_models.py tests/unit/test_capabilities.py tests/unit/test_config.py -q
@@ -527,6 +529,8 @@ git commit -m "feat: add domain values and configuration"
 ```
 
 ---
+
+> **Implementation notes (Task 2 complete):** `TestEvidence` starts with `Test`, so importing it directly into a test module triggers PytestCollectionWarning — import via `spec_driven.models as models` instead (done in existing tests). Adapter plans consume these exact dataclass field orders.
 
 ### Task 3: Discover Markdown documents and parse explicit module boundaries
 
@@ -544,7 +548,7 @@ git commit -m "feat: add domain values and configuration"
 - `infer_test_commands(project_root: Path, config: ProjectConfig) -> tuple[str, str]` returns only an unambiguous pair.
 - `parse_plan_modules(path: Path, allow_inference: bool) -> tuple[Module, ...]` accepts explicit managed markers and contiguous order.
 
-- [ ] **Step 1: Write failing discovery and module tests**
+- [x] **Step 1: Write failing discovery and module tests**
 
 ```python
 from pathlib import Path
@@ -580,7 +584,7 @@ def test_explicit_markers_produce_contiguous_modules() -> None:
     assert [(module.module_id, module.order) for module in modules] == [("M1", 1), ("M2", 2)]
 ```
 
-- [ ] **Step 2: Run tests and verify missing imports**
+- [x] **Step 2: Run tests and verify missing imports**
 
 ```bash
 python -m pytest tests/unit/test_discovery.py tests/unit/test_modules.py -q
@@ -588,7 +592,7 @@ python -m pytest tests/unit/test_discovery.py tests/unit/test_modules.py -q
 
 Expected: import errors.
 
-- [ ] **Step 3: Add a complete fixture**
+- [x] **Step 3: Add a complete fixture**
 
 `fixtures/markdown-project/spec-driven.config.yaml`:
 
@@ -633,7 +637,7 @@ Evidence:
 
 The `M2` block has `order="2"`, `status="pending"`, goal `Translate host events`, and `Next module:` with an empty value.
 
-- [ ] **Step 4: Implement discovery with configured paths before scanning**
+- [x] **Step 4: Implement discovery with configured paths before scanning**
 
 `src/spec_driven/discovery.py`:
 
@@ -705,7 +709,7 @@ def infer_test_commands(root: Path, config: ProjectConfig) -> tuple[str, str]:
     return candidates[0]
 ```
 
-- [ ] **Step 5: Implement marker-first module parsing**
+- [x] **Step 5: Implement marker-first module parsing**
 
 `src/spec_driven/modules.py`:
 
@@ -771,7 +775,7 @@ def parse_plan_modules(path: Path, allow_inference: bool) -> tuple[Module, ...]:
     return ordered
 ```
 
-- [ ] **Step 6: Pass tests and commit**
+- [x] **Step 6: Pass tests and commit**
 
 ```bash
 python -m pytest tests/unit/test_discovery.py tests/unit/test_modules.py -q
@@ -781,6 +785,8 @@ git commit -m "feat: discover documents and parse modules"
 ```
 
 ---
+
+> **Implementation notes (Task 3 complete):** `fixtures/markdown-project` bytes are load-bearing: transactions/E2E hash-compare against them. Never edit prose inside managed blocks; only `MarkdownAdapter.plan_update` may rewrite those regions. Discovery scans use filename tokens (`spec|design`, `plan|roadmap`) when config paths are empty — keep repo-root scanning tests in tmp_path copies.
 
 ### Task 4: Persist versioned events, typed snapshots, and test-gated transitions
 
@@ -796,7 +802,7 @@ git commit -m "feat: discover documents and parse modules"
 - `StateRepository.load() -> StateSnapshot | None`, `save(snapshot: StateSnapshot) -> None` preserve nested types.
 - `start_module`, `record_test_result`, `record_checkpoint`, and `complete_current_module` are pure state transforms.
 
-- [ ] **Step 1: Write failing persistence and gate tests**
+- [x] **Step 1: Write failing persistence and gate tests**
 
 ```python
 from pathlib import Path
@@ -846,7 +852,7 @@ def test_last_module_completion_finishes_session() -> None:
     assert completed.current_module_id == "M2"
 ```
 
-- [ ] **Step 2: Run tests and verify imports fail**
+- [x] **Step 2: Run tests and verify imports fail**
 
 ```bash
 python -m pytest tests/unit/test_events.py tests/unit/test_state.py -q
@@ -854,7 +860,7 @@ python -m pytest tests/unit/test_events.py tests/unit/test_state.py -q
 
 Expected: import errors.
 
-- [ ] **Step 3: Implement event validation and append-only storage**
+- [x] **Step 3: Implement event validation and append-only storage**
 
 `src/spec_driven/events.py`:
 
@@ -904,7 +910,7 @@ class EventStore:
         return tuple(self.read(path.stem) for path in sorted(self.directory.glob("*.json")))
 ```
 
-- [ ] **Step 4: Implement typed snapshot serialization**
+- [x] **Step 4: Implement typed snapshot serialization**
 
 `src/spec_driven/state.py` begins with:
 
@@ -974,7 +980,7 @@ class StateRepository:
             Path(temporary).unlink(missing_ok=True)
 ```
 
-- [ ] **Step 5: Implement pure gate and transition functions**
+- [x] **Step 5: Implement pure gate and transition functions**
 
 Append to `state.py`:
 
@@ -1047,7 +1053,7 @@ def complete_current_module(snapshot: StateSnapshot, event_id: str) -> StateSnap
     )
 ```
 
-- [ ] **Step 6: Pass focused and full tests, then commit**
+- [x] **Step 6: Pass focused and full tests, then commit**
 
 ```bash
 python -m pytest tests/unit/test_events.py tests/unit/test_state.py -q
@@ -1057,6 +1063,8 @@ git commit -m "feat: persist gated module state"
 ```
 
 ---
+
+> **Implementation notes (Task 4 complete):** State transforms are pure; the persistence order used by `CoreEngine`: transform first, append the event only if the snapshot changed (`updated is not snapshot`), then save. Host adapters must mirror this ordering or duplicates will accumulate.
 
 ### Task 5: Add the Markdown plugin and recoverable two-document transactions
 
@@ -1076,7 +1084,7 @@ git commit -m "feat: persist gated module state"
 - `apply_transaction(patches: tuple[DocumentPatch, ...], runtime_root: Path, event_id: str, save_state: Callable[[], None]) -> None`.
 - Transaction journal states are `prepared`, `documents_applied`, `committed`, `rolled_back`.
 
-- [ ] **Step 1: Write failing adapter and rollback tests**
+- [x] **Step 1: Write failing adapter and rollback tests**
 
 ```python
 from pathlib import Path
@@ -1128,7 +1136,7 @@ def test_transaction_restores_first_document_when_state_save_fails(tmp_path: Pat
     assert plan.read_text(encoding="utf-8") == "old plan\n"
 ```
 
-- [ ] **Step 2: Run tests and verify imports fail**
+- [x] **Step 2: Run tests and verify imports fail**
 
 ```bash
 python -m pytest tests/contract/test_document_adapter.py tests/unit/test_markdown.py tests/unit/test_transactions.py -q
@@ -1136,7 +1144,7 @@ python -m pytest tests/contract/test_document_adapter.py tests/unit/test_markdow
 
 Expected: import errors.
 
-- [ ] **Step 3: Define patch primitives and plugin protocol**
+- [x] **Step 3: Define patch primitives and plugin protocol**
 
 `src/spec_driven/patches.py`:
 
@@ -1179,7 +1187,7 @@ class DocumentAdapter(Protocol):
     def apply(self, patch: DocumentPatch) -> None: ...
 ```
 
-- [ ] **Step 4: Implement managed-block Markdown updates**
+- [x] **Step 4: Implement managed-block Markdown updates**
 
 `src/spec_driven/documents/markdown.py`:
 
@@ -1254,7 +1262,7 @@ class MarkdownAdapter:
             Path(temporary).unlink(missing_ok=True)
 ```
 
-- [ ] **Step 5: Implement the multi-file journaled transaction**
+- [x] **Step 5: Implement the multi-file journaled transaction**
 
 `src/spec_driven/transactions.py`:
 
@@ -1315,7 +1323,7 @@ def apply_transaction(
         raise
 ```
 
-- [ ] **Step 6: Add the adapter contract test and pass all tests**
+- [x] **Step 6: Add the adapter contract test and pass all tests**
 
 `tests/contract/test_document_adapter.py` verifies `MarkdownAdapter.name`, suffixes, module parsing, `DocumentUpdate` planning, stale-hash rejection, and idempotent apply.
 
@@ -1329,6 +1337,8 @@ git commit -m "feat: add recoverable Markdown transactions"
 ```
 
 ---
+
+> **Implementation notes (Task 5 complete):** Transaction journals live at `<state_dir>/transactions/<event_id>/journal.json`; `recover()` treats status `documents_applied` as requiring manual recovery. YAML/JSON adapters (structured-documents plan) must implement the same `DocumentAdapter` Protocol — idempotent regeneration of managed content is what keeps replays byte-stable.
 
 ### Task 6: Coordinate the engine, generic adapter, and JSON CLI
 
@@ -1347,7 +1357,7 @@ git commit -m "feat: add recoverable Markdown transactions"
 - CLI commands accept structured JSON through `--input PATH` or stdin `-`: `start`, `status`, `start-module`, `record-test`, `checkpoint`, `confirm-next`, `recover`, `doctor`.
 - JSON errors contain `code`, `message`, `retryable`, and `remediation` and map to exit code `1`; malformed CLI input maps to `2`.
 
-- [ ] **Step 1: Write failing engine integration tests**
+- [x] **Step 1: Write failing engine integration tests**
 
 ```python
 import shutil
@@ -1385,7 +1395,7 @@ def test_engine_updates_both_documents_only_after_gate(tmp_path: Path) -> None:
     assert engine.status().current_module_id == "M2"
 ```
 
-- [ ] **Step 2: Run tests and verify engine import fails**
+- [x] **Step 2: Run tests and verify engine import fails**
 
 ```bash
 python -m pytest tests/integration/test_engine.py -q
@@ -1393,7 +1403,7 @@ python -m pytest tests/integration/test_engine.py -q
 
 Expected: import error for `CoreEngine`.
 
-- [ ] **Step 3: Implement the engine as the only transaction coordinator**
+- [x] **Step 3: Implement the engine as the only transaction coordinator**
 
 `src/spec_driven/engine.py`:
 
@@ -1518,7 +1528,7 @@ class CoreEngine:
         return snapshot
 ```
 
-- [ ] **Step 4: Implement generic normalization**
+- [x] **Step 4: Implement generic normalization**
 
 `src/spec_driven/adapters/generic.py`:
 
@@ -1550,7 +1560,7 @@ class GenericAdapter:
         return event
 ```
 
-- [ ] **Step 5: Implement JSON CLI parsing and errors**
+- [x] **Step 5: Implement JSON CLI parsing and errors**
 
 Replace `src/spec_driven/cli.py` with an `argparse` parser whose subcommands share `--project`, whose structured commands share `--input` defaulting to `-`, and whose handlers decode exact `Event`, `TestEvidence`, and `Checkpoint` dataclasses. Serialize dataclasses with `dataclasses.asdict`; print errors as:
 
@@ -1595,7 +1605,7 @@ def doctor(project: Path) -> dict[str, object]:
 
 The `doctor` subcommand prints this mapping as JSON and returns `0`; discovery/configuration errors use the standard error shape and return `1`.
 
-- [ ] **Step 6: Pass engine/CLI tests and commit**
+- [x] **Step 6: Pass engine/CLI tests and commit**
 
 ```bash
 python -m pytest tests/integration/test_engine.py tests/integration/test_generic_adapter.py tests/integration/test_cli.py -q
@@ -1605,6 +1615,8 @@ git commit -m "feat: expose the gated core engine"
 ```
 
 ---
+
+> **Implementation notes (Task 6 complete):** `confirm_next` hard-verifies `session_id` + `module_id` against the live snapshot — hosts must echo back the session id from `start` output. Structured CLI inputs must carry every `Event` field including `source`. CLI errors: exit 1 domain failures with `{code,message,retryable,remediation}`; exit 2 malformed input (`CLI_INPUT_INVALID`). Snapshot JSON emission converts frozensets to sorted lists (`_jsonable`).
 
 ### Task 7: Add the agent-facing skill and end-to-end recovery tests
 
