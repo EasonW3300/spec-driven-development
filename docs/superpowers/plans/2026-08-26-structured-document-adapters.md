@@ -1,0 +1,748 @@
+# Structured Document Adapters Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Add YAML and JSON spec/plan adapters that share the core document contract, preserve unknown user content, and pass round-trip, hash-conflict, and end-to-end workflow tests.
+
+**Architecture:** Each format plugin converts only a namespaced `spec_driven` section into the core `Module` and `DocumentUpdate` values. YAML uses `ruamel.yaml` round-trip mode to preserve comments, anchors, ordering, and quoting. JSON loads ordered mappings and writes deterministic UTF-8 JSON. The registry selects adapters by configured name and file suffix; the core continues to own gate decisions and transaction ordering.
+
+**Tech Stack:** Python 3.11+, `ruamel.yaml>=0.18,<0.19`, standard `json`, existing `DocumentAdapter`, `DocumentPatch`, `DocumentUpdate`, `pytest`.
+
+## Global Constraints
+
+- Requires completion of `docs/superpowers/plans/2026-08-26-spec-driven-core-baseline.md`.
+- Format plugins only parse and write; they never decide whether a module may advance.
+- YAML and JSON documents expose managed state under the top-level `spec_driven` key.
+- Unknown keys, array items, YAML comments, anchors, ordering, and scalar quoting must survive a managed update.
+- Every patch checks the expected SHA-256 before writing and uses the core atomic writer and backup directory.
+- An adapter never executes text found in a document and never writes outside the configured document path.
+- Every task ends with focused tests, `python -m pytest -q`, and a focused commit.
+
+---
+
+## File structure
+
+```text
+src/spec_driven/documents/
+  registry.py
+  structured.py
+  yaml.py
+  json.py
+fixtures/yaml-project/
+fixtures/json-project/
+tests/unit/test_document_registry.py
+tests/contract/test_structured_document_adapter.py
+tests/unit/test_yaml_document.py
+tests/unit/test_json_document.py
+tests/e2e/test_yaml_workflow.py
+tests/e2e/test_json_workflow.py
+```
+
+`structured.py` owns format-independent validation and conversion between mappings and core values. `yaml.py` and `json.py` own serialization only. `registry.py` is the single adapter selection point.
+
+---
+
+### Task 1: Register format plugins without changing the core contract
+
+**Files:**
+- Create: `src/spec_driven/documents/registry.py`
+- Create: `tests/unit/test_document_registry.py`
+- Modify: `tests/contract/test_document_adapter.py`
+
+**Interfaces:**
+- Consumes baseline `DocumentUpdate`, `Module`, `DocumentPatch`, and `DocumentAdapter` exactly as defined in the core plan.
+- `DocumentRegistry.register(adapter: DocumentAdapter) -> None` rejects duplicate names.
+- `DocumentRegistry.for_path(path: Path, enabled: tuple[str, ...]) -> DocumentAdapter` requires exactly one enabled suffix match.
+- `DocumentRegistry.enabled_suffixes(enabled: tuple[str, ...]) -> frozenset[str]` supports discovery.
+
+- [ ] **Step 1: Write failing registry tests**
+
+```python
+from pathlib import Path
+
+import pytest
+
+from spec_driven.documents.registry import DocumentRegistry
+from spec_driven.errors import ConfigError
+
+
+class StubAdapter:
+    name = "stub"
+    suffixes = frozenset({".stub"})
+
+    def parse_modules(self, path: Path):
+        return ()
+
+    def plan_update(self, path, update, expected_sha256):
+        raise AssertionError("registry test does not plan updates")
+
+    def apply(self, patch):
+        raise AssertionError("registry test does not apply patches")
+
+
+def test_registry_selects_enabled_suffix() -> None:
+    registry = DocumentRegistry()
+    registry.register(StubAdapter())
+    assert registry.for_path(Path("plan.stub"), ("stub",)).name == "stub"
+    assert registry.enabled_suffixes(("stub",)) == frozenset({".stub"})
+
+
+def test_registry_rejects_disabled_and_duplicate_adapters() -> None:
+    registry = DocumentRegistry()
+    registry.register(StubAdapter())
+    with pytest.raises(ConfigError, match="already registered"):
+        registry.register(StubAdapter())
+    with pytest.raises(ConfigError, match="no enabled document adapter"):
+        registry.for_path(Path("plan.stub"), ("markdown",))
+```
+
+- [ ] **Step 2: Run tests and verify the registry is missing**
+
+```bash
+python -m pytest tests/unit/test_document_registry.py tests/contract/test_document_adapter.py -q
+```
+
+Expected: import error for `DocumentRegistry`; the baseline Markdown contract remains green.
+
+- [ ] **Step 3: Implement duplicate-safe registration and suffix selection**
+
+`src/spec_driven/documents/registry.py`:
+
+```python
+from __future__ import annotations
+
+from pathlib import Path
+
+from ..errors import ConfigError
+from .base import DocumentAdapter
+
+
+class DocumentRegistry:
+    def __init__(self) -> None:
+        self._adapters: dict[str, DocumentAdapter] = {}
+
+    def register(self, adapter: DocumentAdapter) -> None:
+        if adapter.name in self._adapters:
+            raise ConfigError(f"document adapter already registered: {adapter.name}")
+        self._adapters[adapter.name] = adapter
+
+    def for_path(self, path: Path, enabled: tuple[str, ...]) -> DocumentAdapter:
+        matches = [
+            adapter
+            for name, adapter in self._adapters.items()
+            if name in enabled and path.suffix.lower() in adapter.suffixes
+        ]
+        if len(matches) != 1:
+            raise ConfigError(f"no enabled document adapter for {path}")
+        return matches[0]
+
+    def enabled_suffixes(self, enabled: tuple[str, ...]) -> frozenset[str]:
+        missing = set(enabled) - set(self._adapters)
+        if missing:
+            raise ConfigError(f"unknown document adapters: {sorted(missing)}")
+        return frozenset(
+            suffix
+            for name in enabled
+            for suffix in self._adapters[name].suffixes
+        )
+```
+
+- [ ] **Step 4: Extend the contract test with registry dispatch**
+
+Append this assertion to `tests/contract/test_document_adapter.py`:
+
+```python
+from spec_driven.documents.registry import DocumentRegistry
+
+
+def test_baseline_markdown_adapter_dispatches_by_contract() -> None:
+    registry = DocumentRegistry()
+    registry.register(MarkdownAdapter())
+    adapter = registry.for_path(Path("plan.md"), ("markdown",))
+    assert adapter.name == "markdown"
+    assert callable(adapter.parse_modules)
+    assert callable(adapter.plan_update)
+    assert callable(adapter.apply)
+```
+
+- [ ] **Step 5: Run tests and commit the registry**
+
+```bash
+python -m pytest tests/unit/test_document_registry.py tests/contract/test_document_adapter.py -q
+python -m pytest -q
+git add src/spec_driven/documents/registry.py tests/unit/test_document_registry.py tests/contract/test_document_adapter.py
+git commit -m "feat: register document format plugins"
+```
+
+---
+
+### Task 2: Add shared structured-document validation and conversion
+
+**Files:**
+- Create: `src/spec_driven/documents/structured.py`
+- Create: `tests/contract/test_structured_document_adapter.py`
+
+**Interfaces:**
+- `parse_structured_modules(root: Mapping[str, object]) -> tuple[Module, ...]`.
+- `apply_structured_update(root: MutableMapping[str, object], update: DocumentUpdate) -> None` mutates only `root["spec_driven"]`.
+- Raises `ConfigError` for missing, duplicate, malformed, or non-contiguous module definitions.
+
+- [ ] **Step 1: Write failing conversion tests**
+
+```python
+import pytest
+
+from spec_driven.documents.structured import apply_structured_update, parse_structured_modules
+from spec_driven.errors import ConfigError
+from spec_driven.models import DocumentUpdate
+
+
+def _root() -> dict[str, object]:
+    return {
+        "title": "Keep me",
+        "spec_driven": {
+            "active_module_id": "M1",
+            "modules": [
+                {
+                    "id": "M1",
+                    "order": 1,
+                    "title": "Core",
+                    "goal": "Build core",
+                    "status": "pending",
+                    "prerequisites": [],
+                    "acceptance": ["gate works"],
+                    "tests": ["unit", "regression"],
+                    "completed_points": [],
+                    "notes": [],
+                    "evidence": [],
+                },
+                {
+                    "id": "M2",
+                    "order": 2,
+                    "title": "Adapter",
+                    "goal": "Build adapter",
+                    "status": "pending",
+                    "prerequisites": ["M1"],
+                    "acceptance": [],
+                    "tests": ["unit", "regression"],
+                    "completed_points": [],
+                    "notes": [],
+                    "evidence": [],
+                },
+            ],
+        },
+    }
+
+
+def test_structured_modules_are_ordered() -> None:
+    assert [module.module_id for module in parse_structured_modules(_root())] == ["M1", "M2"]
+
+
+def test_update_changes_only_managed_values() -> None:
+    root = _root()
+    apply_structured_update(
+        root,
+        DocumentUpdate("M1", "completed", "M2", ("gate works",), ("reuse API",), ("unit: pass",)),
+    )
+    assert root["title"] == "Keep me"
+    managed = root["spec_driven"]
+    assert managed["active_module_id"] == "M2"
+    assert managed["modules"][0]["status"] == "completed"
+    assert managed["modules"][0]["notes"] == ["reuse API"]
+
+
+def test_duplicate_module_ids_are_rejected() -> None:
+    root = _root()
+    root["spec_driven"]["modules"][1]["id"] = "M1"
+    with pytest.raises(ConfigError, match="duplicate module id"):
+        parse_structured_modules(root)
+```
+
+- [ ] **Step 2: Run the contract test to verify it fails**
+
+Run:
+
+```bash
+python -m pytest tests/contract/test_structured_document_adapter.py -q
+```
+
+Expected: import error for `documents.structured`.
+
+- [ ] **Step 3: Implement strict structured parsing**
+
+`src/spec_driven/documents/structured.py`:
+
+```python
+from __future__ import annotations
+
+from collections.abc import Mapping, MutableMapping
+from typing import Any
+
+from ..errors import ConfigError, StateConflictError
+from ..models import DocumentUpdate, Module
+
+
+def _managed(root: Mapping[str, object]) -> Mapping[str, object]:
+    value = root.get("spec_driven")
+    if not isinstance(value, Mapping):
+        raise ConfigError("document requires a spec_driven mapping")
+    return value
+
+
+def parse_structured_modules(root: Mapping[str, object]) -> tuple[Module, ...]:
+    raw_modules = _managed(root).get("modules")
+    if not isinstance(raw_modules, list) or not raw_modules:
+        raise ConfigError("spec_driven.modules must be a non-empty list")
+    modules: list[Module] = []
+    seen: set[str] = set()
+    for raw in raw_modules:
+        if not isinstance(raw, Mapping):
+            raise ConfigError("each module must be a mapping")
+        module_id = str(raw.get("id", ""))
+        if not module_id:
+            raise ConfigError("each module requires id")
+        if module_id in seen:
+            raise ConfigError(f"duplicate module id: {module_id}")
+        seen.add(module_id)
+        modules.append(
+            Module(
+                module_id=module_id,
+                title=str(raw.get("title", "")),
+                order=int(raw.get("order", 0)),
+                goal=str(raw.get("goal", "")),
+                prerequisites=tuple(str(item) for item in raw.get("prerequisites", [])),
+                acceptance=tuple(str(item) for item in raw.get("acceptance", [])),
+                test_requirements=tuple(str(item) for item in raw.get("tests", [])),
+            )
+        )
+    ordered = tuple(sorted(modules, key=lambda module: module.order))
+    if [module.order for module in ordered] != list(range(1, len(ordered) + 1)):
+        raise ConfigError("module order must be contiguous starting at 1")
+    return ordered
+
+
+def apply_structured_update(
+    root: MutableMapping[str, object], update: DocumentUpdate
+) -> None:
+    managed = root.get("spec_driven")
+    if not isinstance(managed, MutableMapping):
+        raise ConfigError("document requires a mutable spec_driven mapping")
+    raw_modules = managed.get("modules")
+    if not isinstance(raw_modules, list):
+        raise ConfigError("spec_driven.modules must be a list")
+    target: MutableMapping[str, Any] | None = None
+    for raw in raw_modules:
+        if isinstance(raw, MutableMapping) and raw.get("id") == update.module_id:
+            target = raw
+            break
+    if target is None:
+        raise StateConflictError(f"managed module not found: {update.module_id}")
+    target["status"] = update.status
+    target["completed_points"] = list(update.completed_points)
+    target["notes"] = list(update.notes)
+    target["evidence"] = list(update.evidence_summary)
+    managed["active_module_id"] = update.next_module_id
+```
+
+- [ ] **Step 4: Run the structured contract tests**
+
+Run:
+
+```bash
+python -m pytest tests/contract/test_structured_document_adapter.py -q
+```
+
+Expected: all tests pass.
+
+- [ ] **Step 5: Commit shared structured conversion**
+
+```bash
+git add src/spec_driven/documents/structured.py tests/contract/test_structured_document_adapter.py
+git commit -m "feat: add structured document conversion"
+```
+
+---
+
+### Task 3: Implement comment-preserving YAML support
+
+**Files:**
+- Create: `src/spec_driven/documents/yaml.py`
+- Create: `fixtures/yaml-project/spec-driven.config.yaml`
+- Create: `fixtures/yaml-project/docs/spec.yaml`
+- Create: `fixtures/yaml-project/docs/plan.yaml`
+- Create: `tests/unit/test_yaml_document.py`
+
+**Interfaces:**
+- `YamlAdapter.name == "yaml"` and suffixes `.yaml`, `.yml`.
+- Uses `YAML(typ="rt")`, `preserve_quotes = True`, and the core `apply_atomic` writer.
+
+- [ ] **Step 1: Write failing round-trip and hash tests**
+
+```python
+from pathlib import Path
+
+from spec_driven.documents.yaml import YamlAdapter
+from spec_driven.models import DocumentUpdate
+from spec_driven.patches import sha256
+
+
+def test_yaml_update_preserves_comments_and_unknown_keys(tmp_path: Path) -> None:
+    path = tmp_path / "plan.yaml"
+    path.write_text(
+        "title: 'Keep quotes' # keep comment\n"
+        "owner: platform\n"
+        "spec_driven:\n"
+        "  active_module_id: M1\n"
+        "  modules:\n"
+        "    - id: M1\n"
+        "      order: 1\n"
+        "      title: Core\n"
+        "      goal: Build\n"
+        "      status: pending\n"
+        "      prerequisites: []\n"
+        "      acceptance: []\n"
+        "      tests: [unit, regression]\n"
+        "      completed_points: []\n"
+        "      notes: []\n"
+        "      evidence: []\n",
+        encoding="utf-8",
+    )
+    adapter = YamlAdapter()
+    patch = adapter.plan_update(
+        path,
+        DocumentUpdate("M1", "completed", None, ("done",), ("note",), ("unit: pass",)),
+        sha256(path),
+    )
+    adapter.apply(patch)
+    content = path.read_text(encoding="utf-8")
+    assert "# keep comment" in content
+    assert "title: 'Keep quotes'" in content
+    assert "owner: platform" in content
+    assert "status: completed" in content
+```
+
+- [ ] **Step 2: Run the YAML tests to verify they fail**
+
+Run:
+
+```bash
+python -m pytest tests/unit/test_yaml_document.py -q
+```
+
+Expected: import error for `YamlAdapter`.
+
+- [ ] **Step 3: Implement the YAML adapter**
+
+`src/spec_driven/documents/yaml.py`:
+
+```python
+from __future__ import annotations
+
+from io import StringIO
+from pathlib import Path
+
+from ruamel.yaml import YAML
+
+from ..errors import StateConflictError
+from ..models import DocumentUpdate, Module
+from ..patches import DocumentPatch, apply_atomic, sha256
+from .structured import apply_structured_update, parse_structured_modules
+
+
+class YamlAdapter:
+    name = "yaml"
+    suffixes = frozenset({".yaml", ".yml"})
+
+    def __init__(self) -> None:
+        self.yaml = YAML(typ="rt")
+        self.yaml.preserve_quotes = True
+
+    def _load(self, path: Path):
+        root = self.yaml.load(path.read_text(encoding="utf-8"))
+        if not isinstance(root, dict):
+            raise StateConflictError(f"YAML root must be a mapping: {path}")
+        return root
+
+    def parse_modules(self, path: Path) -> tuple[Module, ...]:
+        return parse_structured_modules(self._load(path))
+
+    def plan_update(
+        self,
+        path: Path,
+        update: DocumentUpdate,
+        expected_sha256: str,
+    ) -> DocumentPatch:
+        if sha256(path) != expected_sha256:
+            raise StateConflictError(f"document hash is stale: {path}")
+        root = self._load(path)
+        apply_structured_update(root, update)
+        output = StringIO()
+        self.yaml.dump(root, output)
+        return DocumentPatch(path, expected_sha256, output.getvalue(), f"update {update.module_id}")
+
+    def apply(self, patch: DocumentPatch) -> None:
+        apply_atomic(patch)
+```
+
+- [ ] **Step 4: Add fixture files with a two-module managed section**
+
+Use the same two modules and fields from `test_structured_document_adapter.py`. Set `spec.paths` to `docs/spec.yaml`, `plan.paths` to `docs/plan.yaml`, and `documents.adapters` to `[yaml]` in `fixtures/yaml-project/spec-driven.config.yaml`.
+
+- [ ] **Step 5: Run YAML tests and the full regression suite**
+
+Run:
+
+```bash
+python -m pytest tests/unit/test_yaml_document.py tests/contract/test_structured_document_adapter.py -q
+python -m pytest -q
+```
+
+Expected: YAML comment/quote preservation and all prior behavior pass.
+
+- [ ] **Step 6: Commit YAML support**
+
+```bash
+git add src/spec_driven/documents/yaml.py fixtures/yaml-project tests/unit/test_yaml_document.py
+git commit -m "feat: add round-trip YAML documents"
+```
+
+---
+
+### Task 4: Implement deterministic JSON support
+
+**Files:**
+- Create: `src/spec_driven/documents/json.py`
+- Create: `fixtures/json-project/spec-driven.config.yaml`
+- Create: `fixtures/json-project/docs/spec.json`
+- Create: `fixtures/json-project/docs/plan.json`
+- Create: `tests/unit/test_json_document.py`
+
+**Interfaces:**
+- `JsonAdapter.name == "json"` and suffix `.json`.
+- JSON output uses `ensure_ascii=False`, `indent=2`, and a final newline; input key order is preserved.
+
+- [ ] **Step 1: Write failing JSON preservation and idempotence tests**
+
+```python
+import json
+from pathlib import Path
+
+from spec_driven.documents.json import JsonAdapter
+from spec_driven.models import DocumentUpdate
+from spec_driven.patches import sha256
+
+
+def test_json_update_preserves_unknown_fields_and_is_idempotent(tmp_path: Path) -> None:
+    path = tmp_path / "plan.json"
+    path.write_text(json.dumps({
+        "title": "用户计划",
+        "unknown": {"keep": True},
+        "spec_driven": {
+            "active_module_id": "M1",
+            "modules": [{
+                "id": "M1", "order": 1, "title": "Core", "goal": "Build",
+                "status": "pending", "prerequisites": [], "acceptance": [],
+                "tests": ["unit", "regression"], "completed_points": [],
+                "notes": [], "evidence": []
+            }]
+        }
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    adapter = JsonAdapter()
+    update = DocumentUpdate("M1", "completed", None, ("done",), (), ("unit: pass",))
+    adapter.apply(adapter.plan_update(path, update, sha256(path)))
+    first = path.read_text(encoding="utf-8")
+    assert json.loads(first)["unknown"] == {"keep": True}
+    assert "用户计划" in first
+    adapter.apply(adapter.plan_update(path, update, sha256(path)))
+    assert path.read_text(encoding="utf-8") == first
+```
+
+- [ ] **Step 2: Run the JSON test to verify it fails**
+
+Run:
+
+```bash
+python -m pytest tests/unit/test_json_document.py -q
+```
+
+Expected: import error for `JsonAdapter`.
+
+- [ ] **Step 3: Implement the JSON adapter**
+
+`src/spec_driven/documents/json.py`:
+
+```python
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from ..errors import StateConflictError
+from ..models import DocumentUpdate, Module
+from ..patches import DocumentPatch, apply_atomic, sha256
+from .structured import apply_structured_update, parse_structured_modules
+
+
+class JsonAdapter:
+    name = "json"
+    suffixes = frozenset({".json"})
+
+    def _load(self, path: Path) -> dict[str, object]:
+        root = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(root, dict):
+            raise StateConflictError(f"JSON root must be an object: {path}")
+        return root
+
+    def parse_modules(self, path: Path) -> tuple[Module, ...]:
+        return parse_structured_modules(self._load(path))
+
+    def plan_update(
+        self,
+        path: Path,
+        update: DocumentUpdate,
+        expected_sha256: str,
+    ) -> DocumentPatch:
+        if sha256(path) != expected_sha256:
+            raise StateConflictError(f"document hash is stale: {path}")
+        root = self._load(path)
+        apply_structured_update(root, update)
+        replacement = json.dumps(root, ensure_ascii=False, indent=2) + "\n"
+        return DocumentPatch(path, expected_sha256, replacement, f"update {update.module_id}")
+
+    def apply(self, patch: DocumentPatch) -> None:
+        apply_atomic(patch)
+```
+
+- [ ] **Step 4: Add JSON fixture files**
+
+Use valid UTF-8 JSON with the same `spec_driven` shape as the YAML fixture. Set `documents.adapters` to `[json]` and explicit document paths in `fixtures/json-project/spec-driven.config.yaml`.
+
+- [ ] **Step 5: Run JSON tests and regression**
+
+Run:
+
+```bash
+python -m pytest tests/unit/test_json_document.py tests/contract/test_structured_document_adapter.py -q
+python -m pytest -q
+```
+
+Expected: all tests pass with deterministic non-ASCII output.
+
+- [ ] **Step 6: Commit JSON support**
+
+```bash
+git add src/spec_driven/documents/json.py fixtures/json-project tests/unit/test_json_document.py
+git commit -m "feat: add deterministic JSON documents"
+```
+
+---
+
+### Task 5: Wire format plugins into discovery and the engine
+
+**Files:**
+- Modify: `src/spec_driven/documents/__init__.py`
+- Modify: `src/spec_driven/discovery.py`
+- Modify: `src/spec_driven/engine.py`
+- Create: `tests/e2e/test_yaml_workflow.py`
+- Create: `tests/e2e/test_json_workflow.py`
+
+**Interfaces:**
+- `builtin_registry() -> DocumentRegistry` registers Markdown, YAML, and JSON exactly once.
+- Discovery includes enabled adapter suffixes instead of hardcoding Markdown.
+- `CoreEngine` resolves the adapter for each configured document and applies one shared `DocumentUpdate` to both spec and plan.
+
+- [ ] **Step 1: Write failing end-to-end tests for both formats**
+
+```python
+from pathlib import Path
+
+import pytest
+
+from spec_driven.engine import CoreEngine
+
+
+@pytest.mark.parametrize("fixture", ["yaml-project", "json-project"])
+def test_structured_fixture_can_start_and_parse_modules(tmp_path: Path, fixture: str) -> None:
+    root = Path("fixtures") / fixture
+    snapshot = CoreEngine.from_project(root).start()
+    assert snapshot.current_module_id == "M1"
+    assert snapshot.module_states == {"M1": "pending", "M2": "pending"}
+```
+
+- [ ] **Step 2: Run the end-to-end tests to verify they fail**
+
+Run:
+
+```bash
+python -m pytest tests/e2e/test_yaml_workflow.py tests/e2e/test_json_workflow.py -q
+```
+
+Expected: discovery or adapter-selection failure because the core is still Markdown-only.
+
+- [ ] **Step 3: Register built-in plugins**
+
+`src/spec_driven/documents/__init__.py`:
+
+```python
+from .json import JsonAdapter
+from .markdown import MarkdownAdapter
+from .registry import DocumentRegistry
+from .yaml import YamlAdapter
+
+
+def builtin_registry() -> DocumentRegistry:
+    registry = DocumentRegistry()
+    registry.register(MarkdownAdapter())
+    registry.register(YamlAdapter())
+    registry.register(JsonAdapter())
+    return registry
+```
+
+- [ ] **Step 4: Replace hard-coded suffix and parser selection**
+
+Update `discover_documents` to accept `registry: DocumentRegistry`; build the suffix set from enabled registry adapters and scan only those suffixes. Update `CoreEngine.from_project` to call `builtin_registry()`. In `start`, resolve the plan adapter with `registry.for_path(plan_path, config.document_adapters)` and call `adapter.parse_modules(plan_path)`. In confirmation, resolve adapters separately for spec and plan and apply the same `DocumentUpdate` transaction.
+
+The engine must build the update exactly once:
+
+```python
+update = DocumentUpdate(
+    module_id=current,
+    status="completed",
+    next_module_id=next_module_id,
+    completed_points=checkpoint.completed_points,
+    notes=checkpoint.notes,
+    evidence_summary=(
+        f"unit: exit {unit.exit_code}",
+        f"regression: exit {regression.exit_code}",
+    ),
+)
+```
+
+- [ ] **Step 5: Run all adapter contracts and end-to-end tests**
+
+Run:
+
+```bash
+python -m pytest tests/contract/test_document_adapter.py tests/contract/test_structured_document_adapter.py -q
+python -m pytest tests/e2e/test_yaml_workflow.py tests/e2e/test_json_workflow.py -q
+python -m pytest -q
+```
+
+Expected: all document formats start, parse modules, preserve unknown content, and update through the same gate.
+
+- [ ] **Step 6: Commit the format integration**
+
+```bash
+git add src/spec_driven/documents/__init__.py src/spec_driven/discovery.py src/spec_driven/engine.py tests/e2e/test_yaml_workflow.py tests/e2e/test_json_workflow.py
+git commit -m "feat: integrate structured document plugins"
+```
+
+## Structured adapter acceptance checklist
+
+- [ ] Markdown contract remains green.
+- [ ] YAML comments, anchors, key order, and quoting survive managed updates.
+- [ ] JSON unknown fields and Unicode survive managed updates.
+- [ ] Duplicate, missing, or non-contiguous modules are rejected.
+- [ ] Disabled adapters cannot be selected by suffix alone.
+- [ ] Stale hashes prevent both YAML and JSON overwrite.
+- [ ] Both structured fixtures complete the same gated document transaction as Markdown.
