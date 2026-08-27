@@ -35,10 +35,16 @@ def _required(payload: Mapping[str, object], *keys: str) -> list[object]:
     return values
 
 
+def _safe_event_id(raw: str) -> str:
+    """Event ids double as event file names under .spec-driven/events/, so keep them inside the core's whitelist."""
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", raw)
+    return cleaned[:128].strip("-") or "evt"
+
+
 def normalize_session_start(payload: Mapping[str, object]) -> Event:
     session_id, occurred_at = _required(payload, "session_id", "timestamp")
     return Event(
-        event_id=f"{session_id}:session_started",
+        event_id=_safe_event_id(f"{session_id}-session-started-{occurred_at}"),
         schema_version=1,
         session_id=str(session_id),
         type="session_started",
@@ -83,7 +89,7 @@ def normalize_confirmation(payload: Mapping[str, object], command: str) -> Event
         return None
     session_id, module_id, occurred_at = _required(payload, "session_id", "module_id", "timestamp")
     return Event(
-        event_id=f"{session_id}:confirm:{module_id}:{occurred_at}",
+        event_id=_safe_event_id(f"{session_id}-confirm-{module_id}-{occurred_at}"),
         schema_version=1,
         session_id=str(session_id),
         type="next_module_confirmed",
