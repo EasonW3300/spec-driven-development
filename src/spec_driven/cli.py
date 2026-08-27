@@ -20,8 +20,10 @@ class CliInputError(SpecDrivenError):
     code = "CLI_INPUT_INVALID"
 
 
-def _read_payload(name: str) -> dict[str, object]:
+def _read_payload(name: str, *, allow_empty: bool = False) -> dict[str, object]:
     text = sys.stdin.read() if name == "-" else Path(name).read_text(encoding="utf-8")
+    if allow_empty and not text.strip():
+        return {}
     try:
         loaded = json.loads(text)
     except ValueError as error:
@@ -89,15 +91,17 @@ def _handlers(engine: CoreEngine, payload: dict[str, object]) -> dict[str, Calla
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="spec-driven", description="Host-neutral spec-driven development core")
     parser.add_argument("--project", default=".", help="project root directory")
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--project", default=argparse.SUPPRESS, help="project root directory")
     subparsers = parser.add_subparsers(dest="command", required=True)
     structured = ("start", "status", "start-module", "record-test", "checkpoint", "confirm-next", "recover")
     for name in structured:
-        subparser = subparsers.add_parser(name)
+        subparser = subparsers.add_parser(name, parents=[common])
         if name in {"start-module", "record-test", "checkpoint", "confirm-next"}:
             subparser.add_argument("--input", default="-", help="JSON input path or '-' for stdin")
         elif name in {"start"}:
             subparser.add_argument("--input", default="-", help='optional session JSON ({"session_id": ...}) or "-" for stdin')
-    subparsers.add_parser("doctor")
+    subparsers.add_parser("doctor", parents=[common])
     arguments = parser.parse_args(argv)
 
     try:
@@ -106,7 +110,11 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         engine = CoreEngine.from_project(Path(arguments.project))
         needs_input = arguments.command not in {"status", "recover"}
-        payload = _read_payload(arguments.input) if needs_input and hasattr(arguments, "input") else {}
+        payload = (
+            _read_payload(arguments.input, allow_empty=arguments.command == "start")
+            if needs_input and hasattr(arguments, "input")
+            else {}
+        )
         handler = _handlers(engine, payload)[arguments.command]
         result = handler()
         _emit(result)
