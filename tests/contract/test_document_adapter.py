@@ -49,3 +49,15 @@ def test_plan_update_then_apply_round_trip_is_idempotent(tmp_path: Path) -> None
     assert target.read_bytes() == once
     # Prose outside managed blocks is untouched.
     assert "Prose here differs from the spec" in target.read_text(encoding="utf-8")
+
+
+def test_baseline_markdown_adapter_dispatches_by_contract() -> None:
+    from spec_driven.documents.registry import DocumentRegistry
+
+    registry = DocumentRegistry()
+    registry.register(MarkdownAdapter())
+    adapter = registry.for_path(Path("plan.md"), ("markdown",))
+    assert adapter.name == "markdown"
+    assert callable(adapter.parse_modules)
+    assert callable(adapter.plan_update)
+    assert callable(adapter.apply)
