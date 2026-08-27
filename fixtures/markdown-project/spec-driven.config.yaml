@@ -1,0 +1,12 @@
+schema_version: 1
+spec:
+  paths: [docs/specs/product.md]
+plan:
+  paths: [docs/plans/product-plan.md]
+tests:
+  unit:
+    command: python -m pytest tests/unit -q
+  regression:
+    command: python -m pytest -q
+documents:
+  adapters: [markdown]
