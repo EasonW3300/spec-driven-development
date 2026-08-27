@@ -1,0 +1,23 @@
+# Product plan, YAML host format. This file intentionally differs from spec.yaml.
+delivery_notes: prepare rollback window before each module
+
+spec_driven:
+  active_module_id: M1
+  modules:
+    - id: M1
+      order: 1
+      title: Core
+      goal: Ship gated core baseline
+      status: pending
+      prerequisites: []
+      acceptance:
+        - 'MVP works'    # single-quoted on purpose
+      tests: [unit, regression]
+    - id: M2
+      order: 2
+      title: Adapter
+      goal: Wire host adapters through the core gate
+      status: pending
+      prerequisites: [M1]
+      acceptance: []
+      tests: [unit, regression]

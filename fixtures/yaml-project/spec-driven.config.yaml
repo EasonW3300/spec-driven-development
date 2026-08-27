@@ -1,0 +1,12 @@
+schema_version: 1
+spec:
+  paths: [docs/spec.yaml]
+plan:
+  paths: [docs/plan.yaml]
+tests:
+  unit:
+    command: python -m pytest tests/unit -q
+  regression:
+    command: python -m pytest -q
+documents:
+  adapters: [yaml]

@@ -1,0 +1,27 @@
+# Product spec, YAML host format. Prose lives beside the managed section.
+purpose: keep product promises testable
+
+stakeholders:
+  - name: platform
+    role: owner
+
+spec_driven:
+  active_module_id: M1
+  modules:
+    - id: M1
+      order: 1
+      title: Core
+      goal: Build core engine
+      status: pending
+      prerequisites: []
+      acceptance:
+        - "gate works"   # reviewer note: keep quotes round-tripping
+      tests: [unit, regression]
+    - id: M2
+      order: 2
+      title: Adapter
+      goal: Build adapter
+      status: pending
+      prerequisites: [M1]
+      acceptance: []
+      tests: [unit, regression]
