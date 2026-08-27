@@ -256,7 +256,7 @@ git commit -m "feat: add Codex notify normalization"
 - Produces: `HookResult(exit_code: int, response: Mapping[str, object], emitted: tuple[Event | TestEvidence, ...])`.
 - Produces: `main(argv: list[str] | None = None) -> int` — reads the JSON payload from the verified position (default `argv[1]`), emits each event to the core CLI, and always exits `0` unless the payload is structurally unusable (exit `2`); notify output controls nothing at runtime, so unlike Claude Code it must never block on a nonzero exit.
 
-- [ ] **Step 1: Write tests for dispatch decisions**
+- [x] **Step 1: Write tests for dispatch decisions**
 
 ```python
 from pathlib import Path
@@ -296,7 +296,7 @@ def test_turn_complete_event_is_forwarded(tmp_path: Path) -> None:
     assert result.emitted[0].type == "session_turn_completed"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -306,7 +306,7 @@ python -m pytest tests/unit/test_codex_adapter.py tests/integration/test_codex_h
 
 Expected: import error for `codex_hook`.
 
-- [ ] **Step 3: Implement dispatch and core delegation**
+- [x] **Step 3: Implement dispatch and core delegation**
 
 `src/spec_driven/adapters/codex_hook.py`:
 
@@ -371,11 +371,11 @@ def main(argv: list[str] | None = None) -> int:
 
 Requirements locked here regardless of host-shape adjustments: reuse the shared `emit_to_core` helper extracted in the Claude Code hook rather than duplicating subprocess logic; the bridge process never writes spec/plan itself; a rejected confirmation produces a diagnostic message naming the exact command, never a document write.
 
-- [ ] **Step 4: Add failure-path tests**
+- [x] **Step 4: Add failure-path tests**
 
 Cover: payload argument missing or unparseable JSON (exit `2`, documents untouched), unknown event types ignored silently, missing module ID on confirmation (nonzero/stable error response), core CLI rejection while gates are open (confirmation refused with actionable reason). Each case must leave both documents byte-identical and everything under `.spec-driven/` unchanged apart from audit events.
 
-- [ ] **Step 5: Run integration tests and the full suite**
+- [x] **Step 5: Run integration tests and the full suite**
 
 Run:
 
@@ -386,7 +386,7 @@ python -m pytest -q
 
 Expected: exact confirmation reaches the core, natural language only receives context, and all failure paths fail closed.
 
-- [ ] **Step 6: Commit the dispatcher**
+- [x] **Step 6: Commit the dispatcher**
 
 ```bash
 git add src/spec_driven/adapters/codex_hook.py tests/unit/test_codex_adapter.py tests/integration/test_codex_hooks.py
@@ -394,6 +394,12 @@ git commit -m "feat: add fail-closed Codex notify bridge"
 ```
 
 ---
+
+> **Implementation notes (Task 2 complete):**
+> - `emit_to_core` lives in `adapters/_core_bridge.py`, NOT in `claude_code_hook.py` as the plan snippet imports — import from `._core_bridge` (plan's intent, shared helper).
+> - Codex bridge is the OPPOSITE fail mode of Claude Code hooks: notify output controls nothing, so core rejection must be REPORTED (`status: "error", reason: "CORE_REJECTED: …"`) while still exiting 0; only structural payload failures exit 2. Never copy Claude Code's blocking behavior here.
+> - `main()` reads the payload at argv[1] position because Codex passes it as one JSON argument; response is a single JSON line on stdout.
+> - Missing module_id on confirmation raises InvalidEventError inside `normalize_confirmation` → dispatch returns exit 2 with `{code, message}`; documents untouched.
 
 ### Task 3: Register the notify bridge, custom prompt, and skill safely
 
