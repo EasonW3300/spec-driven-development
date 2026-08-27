@@ -65,11 +65,11 @@ fixtures/codex/
 - Produces: `normalize_notify_event(payload: Mapping[str, object]) -> Event | None` (returns `None` for non-session event types).
 - Produces: `parse_explicit_confirmation(prompt: str, command: str) -> bool` and `normalize_confirmation(payload: Mapping[str, object], command: str) -> Event | None`.
 
-- [ ] **Step 1: Verify and freeze the Codex contract**
+- [x] **Step 1: Verify and freeze the Codex contract**
 
 Read the currently installed Codex CLI documentation (`github.com/openai/codex/docs/config.md` or the matching docs site page; also run `codex --version`). Record in `docs/adapters/codex-capabilities.md`: how `notify` invokes the external program (argument position of the JSON payload), which event types exist today, whether any user-prompt or approval event reaches an external program, and the directories custom prompts and skills load from. Save one minimal valid JSON fixture per listed fixture using only documented field names. If an expected capability (e.g., a prompt-submission event) does not exist at all, still create the fixture shaped like the closest documented artifact and mark the capability degraded — the degraded path is tested, not skipped.
 
-- [ ] **Step 2: Write failing contract tests**
+- [x] **Step 2: Write failing contract tests**
 
 ```python
 import json
@@ -113,7 +113,7 @@ def test_natural_language_prompt_does_not_create_event() -> None:
     assert normalize_confirmation(_load("prompt-natural-language.json"), "confirm-next") is None
 ```
 
-- [ ] **Step 3: Run contract tests to verify they fail**
+- [x] **Step 3: Run contract tests to verify they fail**
 
 Run:
 
@@ -123,7 +123,7 @@ python -m pytest tests/contract/test_codex_contract.py -q
 
 Expected: import errors for the adapter functions.
 
-- [ ] **Step 4: Implement normalization with explicit field validation**
+- [x] **Step 4: Implement normalization with explicit field validation**
 
 `src/spec_driven/adapters/codex.py` (event-type strings and payload keys must match the Step 1 verification; the code below shows the target invariant, not a guess to be kept blindly):
 
@@ -216,7 +216,7 @@ def normalize_confirmation(payload: Mapping[str, object], command: str) -> Event
 
 The implementer must adapt `"agent-turn-complete"`, extraction keys, and directory names to whatever Step 1 verified. Invariants that never change: unknown event types return `None`; missing identity fields raise `InvalidEventError`; confirmation matches only the whole stripped prompt equal to the command.
 
-- [ ] **Step 5: Run contract tests and the full suite**
+- [x] **Step 5: Run contract tests and the full suite**
 
 Run:
 
@@ -227,7 +227,7 @@ python -m pytest -q
 
 Expected: contract fixtures pass and all core tests remain green.
 
-- [ ] **Step 6: Commit the contract adapter**
+- [x] **Step 6: Commit the contract adapter**
 
 ```bash
 git add src/spec_driven/adapters/codex.py tests/contract/test_codex_contract.py fixtures/codex
@@ -235,6 +235,12 @@ git commit -m "feat: add Codex notify normalization"
 ```
 
 ---
+
+> **Implementation notes (Task 1 complete):**
+> - Raw `notify` payloads lack session/timestamp identity; the installed bridge (Task 2) wrapper-injects `session_id`/`timestamp` into payloads before dispatch — fixtures/codex/notify-turn-complete.json documents this shape. Later tasks must NOT assume Codex itself provides these fields.
+> - `_safe_event_id` is mandatory: event ids become filenames under `.spec-driven/events/`, so every host-derived id (session ids, timestamps) must pass through it before constructing an Event.
+> - Malformed user TOML must degrade capability detection (`degraded`), never crash — the installer in Task 3 must follow the same philosophy.
+> - Tests reference models via module import (`import spec_driven.models as ...`) if dataclasses are needed, to avoid PytestCollectionWarning.
 
 ### Task 2: Implement the notify bridge and fail-closed confirmation path
 
