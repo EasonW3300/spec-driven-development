@@ -1,0 +1,7 @@
+{
+  "hook_event_name": "SessionStart",
+  "session_id": "s1",
+  "transcript_path": "/tmp/transcript-s1.jsonl",
+  "cwd": "/proj",
+  "timestamp": "2026-08-26T00:00:00Z"
+}

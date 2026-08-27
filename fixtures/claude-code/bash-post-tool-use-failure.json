@@ -1,0 +1,15 @@
+{
+  "hook_event_name": "PostToolUseFailure",
+  "session_id": "s1",
+  "cwd": "/proj",
+  "tool_name": "Bash",
+  "tool_input": { "command": "python -m pytest -q" },
+  "command": "python -m pytest -q",
+  "module_id": "M1",
+  "test_kind": "regression",
+  "exit_code": 2,
+  "started_at": "2026-08-26T00:01:00Z",
+  "finished_at": "2026-08-26T00:01:04Z",
+  "output_summary": "1 failed, assertion on gate",
+  "cwd_at_start": "/proj"
+}

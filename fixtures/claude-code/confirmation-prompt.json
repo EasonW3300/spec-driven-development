@@ -1,0 +1,8 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "session_id": "s1",
+  "cwd": "/proj",
+  "prompt": "confirm-next",
+  "module_id": "M1",
+  "timestamp": "2026-08-26T00:02:00Z"
+}

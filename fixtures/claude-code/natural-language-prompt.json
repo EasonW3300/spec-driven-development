@@ -1,0 +1,8 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "session_id": "s1",
+  "cwd": "/proj",
+  "prompt": "可以，继续下一个模块",
+  "module_id": "M1",
+  "timestamp": "2026-08-26T00:02:10Z"
+}
