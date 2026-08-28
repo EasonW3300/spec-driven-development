@@ -10,7 +10,7 @@ from typing import Callable
 from .adapters.generic import GenericAdapter
 from .config import load_config
 from .discovery import discover_documents, infer_test_commands
-from .documents.markdown import MarkdownAdapter
+from .documents import builtin_registry
 from .engine import CoreEngine
 from .errors import SpecDrivenError
 from .models import Checkpoint, Event, TestEvidence
@@ -37,7 +37,8 @@ def doctor(project: str) -> dict[str, object]:
     root = Path(project)
     config = load_config(root)
     spec, plan = discover_documents(root, config)
-    modules = MarkdownAdapter().parse_modules(root / plan.path)
+    registry = builtin_registry()
+    modules = registry.for_path(root / plan.path, config.document_adapters).parse_modules(root / plan.path)
     unit, regression = infer_test_commands(root, config)
     return {
         "status": "ok",

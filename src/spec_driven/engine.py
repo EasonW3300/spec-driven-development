@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from .config import load_config
 from .discovery import discover_documents
-from .documents.markdown import MarkdownAdapter
+from .documents import builtin_registry
 from .errors import InvalidEventError, RecoveryRequiredError
 from .events import EventStore, validate_event
 from .models import Checkpoint, DocumentUpdate, Event, StateSnapshot, TestEvidence
@@ -25,7 +25,7 @@ class CoreEngine:
             raise InvalidEventError("runtime directory must be inside project")
         self.state_repository = StateRepository(self.runtime / "state.json")
         self.event_store = EventStore(self.runtime / "events")
-        self.adapter = MarkdownAdapter()
+        self.registry = builtin_registry()
         self.session_id_factory = session_id_factory or (lambda: uuid4().hex)
 
     @classmethod
@@ -43,7 +43,9 @@ class CoreEngine:
         if existing is not None:
             return existing
         spec, plan = discover_documents(self.project_root, self.config)
-        modules = self.adapter.parse_modules(self.project_root / plan.path)
+        plan_path = self.project_root / plan.path
+        adapter = self.registry.for_path(plan_path, self.config.document_adapters)
+        modules = adapter.parse_modules(plan_path)
         snapshot = StateSnapshot(
             1,
             self.session_id_factory(),
@@ -110,7 +112,8 @@ class CoreEngine:
             ),
         )
         patches = tuple(
-            self.adapter.plan_update(self.project_root / ref.path, update, sha256(self.project_root / ref.path))
+            self.registry.for_path(self.project_root / ref.path, self.config.document_adapters)
+            .plan_update(self.project_root / ref.path, update, sha256(self.project_root / ref.path))
             for ref in snapshot.documents
         )
         self.event_store.append(event)

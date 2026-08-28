@@ -4,6 +4,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from .documents import builtin_registry
+from .documents.registry import DocumentRegistry
 from .errors import DiscoveryAmbiguousError
 from .models import DocumentRef, ProjectConfig
 
@@ -27,18 +29,27 @@ def _configured(root: Path, paths: tuple[str, ...], kind: str) -> list[DocumentR
     ]
 
 
-def _scan(root: Path, kind: str, tokens: tuple[str, ...]) -> list[DocumentRef]:
+def _scan(root: Path, kind: str, tokens: tuple[str, ...], suffixes: frozenset[str]) -> list[DocumentRef]:
     paths = sorted(
-        path for path in root.rglob("*.md")
-        if ".spec-driven" not in path.parts
+        path
+        for path in root.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() in suffixes
+        and ".spec-driven" not in path.parts
         and any(token in path.name.lower() for token in tokens)
     )
     return [DocumentRef(kind, str(path.relative_to(root)), _sha256(path)) for path in paths]
 
 
-def discover_documents(root: Path, config: ProjectConfig) -> tuple[DocumentRef, DocumentRef]:
-    specs = _configured(root, config.spec_paths, "spec") if config.spec_paths else _scan(root, "spec", ("spec", "design"))
-    plans = _configured(root, config.plan_paths, "plan") if config.plan_paths else _scan(root, "plan", ("plan", "roadmap"))
+def discover_documents(
+    root: Path,
+    config: ProjectConfig,
+    registry: DocumentRegistry | None = None,
+) -> tuple[DocumentRef, DocumentRef]:
+    registry = registry or builtin_registry()
+    suffixes = registry.enabled_suffixes(config.document_adapters)
+    specs = _configured(root, config.spec_paths, "spec") if config.spec_paths else _scan(root, "spec", ("spec", "design"), suffixes)
+    plans = _configured(root, config.plan_paths, "plan") if config.plan_paths else _scan(root, "plan", ("plan", "roadmap"), suffixes)
     if len(specs) != 1 or len(plans) != 1:
         raise DiscoveryAmbiguousError(
             f"expected one spec and one plan; found {len(specs)} spec(s), {len(plans)} plan(s)",
