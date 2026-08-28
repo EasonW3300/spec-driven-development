@@ -8,6 +8,7 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Callable
 
+from . import __version__
 from .adapters.generic import GenericAdapter
 from .capabilities import load_host_manifest
 from .diagnostics import run_doctor, run_self_test
@@ -231,6 +232,7 @@ def _self_test(arguments: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="spec-driven", description="Host-neutral spec-driven development core")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--project", default=".", help="project root directory")
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--project", default=argparse.SUPPRESS, help="project root directory")

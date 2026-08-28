@@ -13,7 +13,20 @@ from .engine import CoreEngine
 from .errors import SpecDrivenError
 from .models import Checkpoint, Event, TestEvidence
 
-_FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "markdown-project"
+def _fixture_root() -> Path:
+    here = Path(__file__).resolve()
+    candidates = (
+        here.parents[2] / "fixtures" / "markdown-project",  # source checkout
+        here.parent / "fixtures" / "markdown-project",  # packaged inside the module (wheel)
+        here.parents[1] / "fixtures" / "markdown-project",  # wheel data at site-packages
+    )
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return candidates[0]
+
+
+_FIXTURE_ROOT = _fixture_root()
 _NEXT_MODULE_CONFIRMED = {
     "event_id": "confirm-1",
     "schema_version": 1,

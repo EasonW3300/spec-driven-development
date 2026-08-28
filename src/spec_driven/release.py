@@ -1,0 +1,25 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+
+def validate_release(root: Path) -> tuple[str, ...]:
+    errors: list[str] = []
+    required = (
+        root / "skills/spec-driven-development/SKILL.md",
+        root / "migrations/README.md",
+        root / "README.md",
+        root / "CHANGELOG.md",
+    )
+    for path in required:
+        if not path.is_file() or not path.read_text(encoding="utf-8").strip():
+            errors.append(f"required release file missing or empty: {path.relative_to(root)}")
+    manifest_dir = root / "install/manifests"
+    for path in sorted(manifest_dir.glob("*.json")):
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if not raw.get("settings_fragment"):
+            errors.append(f"host manifest settings_fragment is empty: {path.name}")
+    if not list(manifest_dir.glob("*.json")):
+        errors.append("no host manifests found")
+    return tuple(errors)

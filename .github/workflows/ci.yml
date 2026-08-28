@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install package, test deps, and build
+        run: pip install .[test] build
+      - name: Run test suite
+        run: python -m pytest -q
+      - name: Run offline self-test
+        run: python -m spec_driven.cli self-test --json
+      - name: Build wheel
+        run: python -m build
+      - name: Install wheel into clean venv
+        run: |
+          python -m venv /tmp/spec-driven-wheel-venv
+          /tmp/spec-driven-wheel-venv/bin/python -m pip install dist/*.whl
+      - name: Verify installed console script version
+        run: /tmp/spec-driven-wheel-venv/bin/spec-driven --version
+      - name: Verify installed-wheel self-test
+        run: /tmp/spec-driven-wheel-venv/bin/spec-driven self-test --json

@@ -18,6 +18,12 @@ spec-driven = "spec_driven.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/spec_driven"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"skills/spec-driven-development" = "skills/spec-driven-development"
+"install/manifests" = "install/manifests"
+"migrations" = "migrations"
+"fixtures/markdown-project" = "spec_driven/fixtures/markdown-project"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
