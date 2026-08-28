@@ -25,6 +25,7 @@ from .install import (
     rollback_toml,
     verify_receipt,
 )
+from .migrate import MigrationRegistry, migrate_file
 from .models import Checkpoint, Event, TestEvidence
 
 
@@ -170,6 +171,58 @@ def _uninstall(args: argparse.Namespace) -> int:
     return 0
 
 
+def _migrate(args: argparse.Namespace) -> int:
+    project = Path(args.project)
+    backup_dir = project / ".spec-driven" / "migration-backups"
+    registry = MigrationRegistry()
+    target_version = args.target_version
+    dry_run = args.dry_run
+
+    found: list[tuple[Path, str]] = []
+    state_path = project / ".spec-driven" / "state.json"
+    if state_path.is_file():
+        found.append((state_path, "state"))
+    config_path = project / "spec-driven.config.json"
+    if config_path.is_file():
+        found.append((config_path, "config"))
+
+    for candidate in (project / "spec-driven.config.yaml", project / "spec-driven.config.toml"):
+        if candidate.is_file() and not config_path.is_file():
+            _emit(
+                {
+                    "path": str(candidate),
+                    "kind": "config",
+                    "skipped": "non-json-config",
+                    "message": "migrations apply to JSON machine documents only",
+                }
+            )
+
+    if not found:
+        _emit({"project": str(project), "target_version": target_version, "migrated": [], "dry_run": dry_run})
+        return 0
+
+    try:
+        if dry_run:
+            for path, kind in found:
+                document = json.loads(path.read_text(encoding="utf-8"))
+                _emit(
+                    {
+                        "path": str(path),
+                        "kind": kind,
+                        "current_version": int(document.get("schema_version", 0)),
+                        "target_version": target_version,
+                        "dry_run": True,
+                    }
+                )
+            return 0
+        for path, kind in found:
+            migrate_file(path, kind, target_version, backup_dir, registry)
+            _emit({"path": str(path), "kind": kind, "migrated": True})
+        return 0
+    except ValueError as error:
+        raise CliInputError(str(error)) from error
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="spec-driven", description="Host-neutral spec-driven development core")
     parser.add_argument("--project", default=".", help="project root directory")
@@ -191,6 +244,9 @@ def main(argv: list[str] | None = None) -> int:
     parser_uninstall = subparsers.add_parser("uninstall", parents=[common])
     parser_uninstall.add_argument("--receipt", required=True)
     parser_uninstall.add_argument("--root", default=".")
+    parser_migrate = subparsers.add_parser("migrate", parents=[common])
+    parser_migrate.add_argument("--target-version", type=int, required=True)
+    parser_migrate.add_argument("--dry-run", action="store_true")
     arguments = parser.parse_args(argv)
 
     try:
@@ -201,6 +257,8 @@ def main(argv: list[str] | None = None) -> int:
             return _install(arguments)
         if arguments.command == "uninstall":
             return _uninstall(arguments)
+        if arguments.command == "migrate":
+            return _migrate(arguments)
         engine = CoreEngine.from_project(Path(arguments.project))
         needs_input = arguments.command not in {"status", "recover"}
         payload = (
