@@ -10,6 +10,8 @@ from ruamel.yaml import YAML
 from .errors import ConfigError
 from .models import ProjectConfig
 
+CONFIG_FILENAME = "spec-driven.config.yaml"
+
 _DEFAULTS: dict[str, Any] = {
     "schema_version": 1,
     "spec": {"paths": []},
@@ -49,7 +51,7 @@ def load_config(
     session_override: Mapping[str, object] | None = None,
 ) -> ProjectConfig:
     raw = _merge(_DEFAULTS, _read(global_path))
-    raw = _merge(raw, _read(project_root / "spec-driven.config.yaml"))
+    raw = _merge(raw, _read(project_root / CONFIG_FILENAME))
     raw = _merge(raw, session_override or {})
     if raw.get("schema_version") != 1:
         raise ConfigError("only config schema_version 1 is supported")

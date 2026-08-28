@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
+from spec_driven import models
 from spec_driven.adapters.generic import GenericAdapter
 from spec_driven.engine import CoreEngine
-from spec_driven.models import Checkpoint, Event, TestEvidence
 
 _PARAMS = [
     ("yaml-project", ".yaml"),
@@ -30,10 +30,10 @@ def test_structured_fixture_runs_full_gated_transaction(tmp_path: Path, fixture:
     shutil.copytree(Path("fixtures") / fixture, root)
     engine = CoreEngine.from_project(root, session_id_factory=lambda: "session-1")
     engine.start()
-    engine.start_module(Event("start-1", 1, "session-1", "module_started", "t0", "core", "agent", "M1", {}))
-    engine.record_test("unit-1", TestEvidence("unit", "M1", "unit", ".", "t0", "t1", 0, None, "", 1))
-    engine.record_test("reg-1", TestEvidence("regression", "M1", "regression", ".", "t0", "t1", 0, None, "", 1))
-    engine.record_checkpoint("cp-event", Checkpoint("cp1", "M1", ("done",), ("note",)))
+    engine.start_module(models.Event("start-1", 1, "session-1", "module_started", "t0", "core", "agent", "M1", {}))
+    engine.record_test("unit-1", models.TestEvidence("unit", "M1", "unit", ".", "t0", "t1", 0, None, "", 1))
+    engine.record_test("reg-1", models.TestEvidence("regression", "M1", "regression", ".", "t0", "t1", 0, None, "", 1))
+    engine.record_checkpoint("cp-event", models.Checkpoint("cp1", "M1", ("done",), ("note",)))
     before = (root / "docs/plan.yaml" if "yaml" in fixture else root / "docs/plan.json").read_bytes()
     engine.confirm_next(
         GenericAdapter().normalize(

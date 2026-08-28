@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from .config import CONFIG_FILENAME
 from .documents import builtin_registry
 from .documents.registry import DocumentRegistry
 from .errors import DiscoveryAmbiguousError
@@ -34,6 +35,7 @@ def _scan(root: Path, kind: str, tokens: tuple[str, ...], suffixes: frozenset[st
         path
         for path in root.rglob("*")
         if path.is_file()
+        and path.name != CONFIG_FILENAME
         and path.suffix.lower() in suffixes
         and ".spec-driven" not in path.parts
         and any(token in path.name.lower() for token in tokens)
@@ -48,8 +50,16 @@ def discover_documents(
 ) -> tuple[DocumentRef, DocumentRef]:
     registry = registry or builtin_registry()
     suffixes = registry.enabled_suffixes(config.document_adapters)
-    specs = _configured(root, config.spec_paths, "spec") if config.spec_paths else _scan(root, "spec", ("spec", "design"), suffixes)
-    plans = _configured(root, config.plan_paths, "plan") if config.plan_paths else _scan(root, "plan", ("plan", "roadmap"), suffixes)
+    specs = (
+        _configured(root, config.spec_paths, "spec")
+        if config.spec_paths
+        else _scan(root, "spec", ("spec", "design"), suffixes)
+    )
+    plans = (
+        _configured(root, config.plan_paths, "plan")
+        if config.plan_paths
+        else _scan(root, "plan", ("plan", "roadmap"), suffixes)
+    )
     if len(specs) != 1 or len(plans) != 1:
         raise DiscoveryAmbiguousError(
             f"expected one spec and one plan; found {len(specs)} spec(s), {len(plans)} plan(s)",

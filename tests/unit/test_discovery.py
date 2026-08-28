@@ -55,3 +55,16 @@ def test_configured_paths_outside_project_are_rejected(tmp_path: Path) -> None:
     except DiscoveryAmbiguousError:
         raised = True
     assert raised
+
+
+def test_auto_discovery_ignores_project_config_file(tmp_path: Path) -> None:
+    (tmp_path / "spec-driven.config.yaml").write_text(
+        "documents:\n  adapters:\n    - markdown\n    - yaml\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "spec.yaml").write_text("spec: []\n", encoding="utf-8")
+    (tmp_path / "docs" / "plan.yaml").write_text("plan: []\n", encoding="utf-8")
+    spec, plan = discover_documents(tmp_path, load_config(tmp_path))
+    assert spec.path == "docs/spec.yaml"
+    assert plan.path == "docs/plan.yaml"
