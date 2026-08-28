@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from spec_driven.capabilities import HostManifest
-from spec_driven.install import InstallReceipt, plan_install, verify_receipt
+from spec_driven.install import InstallReceipt, plan_install, resolve_package_root, verify_receipt
 
 
 def _manifest(settings_target: str, host: str = "claude-code") -> HostManifest:
@@ -34,3 +34,28 @@ def test_receipt_with_contained_paths_passes(tmp_path: Path) -> None:
     (tmp_path / "root" / "settings.json").write_text("{}", encoding="utf-8")
     receipt = InstallReceipt(str(tmp_path / "root" / "backups"), str(tmp_path / "root" / "settings.json"), str(tmp_path / "root" / "backups" / "0-settings.json"))
     verify_receipt(receipt, tmp_path / "root")
+
+
+def test_resolve_package_root_source_layout(tmp_path: Path) -> None:
+    module_file = tmp_path / "src" / "spec_driven" / "cli.py"
+    module_file.parent.mkdir(parents=True)
+    (tmp_path / "install" / "manifests").mkdir(parents=True)
+    module_file.write_text("", encoding="utf-8")
+    assert resolve_package_root(module_file) == tmp_path
+
+
+def test_resolve_package_root_wheel_layout(tmp_path: Path) -> None:
+    site_packages = tmp_path / "lib" / "python3.12" / "site-packages"
+    module_file = site_packages / "spec_driven" / "cli.py"
+    module_file.parent.mkdir(parents=True)
+    (site_packages / "install" / "manifests").mkdir(parents=True)
+    module_file.write_text("", encoding="utf-8")
+    assert resolve_package_root(module_file) == site_packages
+
+
+def test_resolve_package_root_raises_when_missing(tmp_path: Path) -> None:
+    module_file = tmp_path / "nested" / "module" / "cli.py"
+    module_file.parent.mkdir(parents=True)
+    module_file.write_text("", encoding="utf-8")
+    with pytest.raises(ValueError, match="package data not found"):
+        resolve_package_root(module_file)

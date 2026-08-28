@@ -22,6 +22,7 @@ packages = ["src/spec_driven"]
 "skills/spec-driven-development" = "skills/spec-driven-development"
 "install/manifests" = "install/manifests"
 "migrations" = "migrations"
+"adapters/codex" = "adapters/codex"
 "fixtures/markdown-project" = "spec_driven/fixtures/markdown-project"
 
 [tool.pytest.ini_options]

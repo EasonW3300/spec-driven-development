@@ -11,6 +11,23 @@ from typing import Mapping
 from .capabilities import HostManifest
 
 
+def resolve_package_root(here: Path) -> Path:
+    """Root that contains package data (install/manifests/), in a source checkout
+    or an installed wheel. Raise ValueError if none of the candidate ancestors has it."""
+    for root in (here.parents[2], here.parents[1], here.parents[0]):
+        if (root / "install" / "manifests").is_dir():
+            return root
+    raise ValueError(f"package data not found below {here}")
+
+
+def copy_skill_tree(source_dir: Path, destination: Path) -> None:
+    """Copy a skill tree (SKILL.md at the source root) into the install root."""
+    if not source_dir.is_dir():
+        raise ValueError(f"skill source missing: {source_dir}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source_dir, destination, dirs_exist_ok=True)
+
+
 def _registration_identity(entry: dict[str, object]) -> object:
     return json.dumps(entry, sort_keys=True, ensure_ascii=False)
 

@@ -61,3 +61,20 @@ def test_doctor_cli_json_exits_one_when_discovery_is_ambiguous(tmp_path: Path, c
     discovery = next(item for item in payload if item["name"] == "document_discovery")
     assert discovery["status"] == "fail"
     assert discovery["remediation"] == "set spec.paths and plan.paths in spec-driven.config.yaml"
+
+
+def test_doctor_malformed_config_yaml_is_configuration_failure(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "spec-driven.config.yaml").write_text(
+        "schema_version: 1\nspec:\n  paths: [docs/specs/product.md\n", encoding="utf-8"
+    )
+    checks = run_doctor(tmp_path, "generic")
+    configuration = next(check for check in checks if check.name == "configuration")
+    assert configuration.status == "fail"
+    assert configuration.remediation == "check spec-driven.config.yaml"
+    assert len(checks) == 1  # a config that cannot load makes discovery/commands moot
+
+    assert main(["--project", str(tmp_path), "doctor", "--json"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert isinstance(payload, list)
+    configuration_item = next(item for item in payload if item["name"] == "configuration")
+    assert configuration_item["status"] == "fail"

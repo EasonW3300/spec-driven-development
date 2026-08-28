@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from spec_driven.capabilities import load_host_manifest
-from spec_driven.cli import _install, _uninstall
+from spec_driven.cli import _install, _uninstall, main
 from spec_driven.install import (
     apply_install,
     merge_toml_fragment,
@@ -56,11 +56,38 @@ def test_cli_project_install_and_uninstall_round_trip(tmp_path: Path, monkeypatc
     settings = tmp_path / ".claude" / "settings.json"
     assert settings.is_file()
     assert "python -m spec_driven.adapters.claude_code_hook" in settings.read_text(encoding="utf-8")
+    assert (tmp_path / ".claude" / "skills" / "spec-driven-development" / "SKILL.md").is_file()
     receipt_path = tmp_path / ".spec-driven" / "install-receipts" / "claude-code.json"
     assert receipt_path.is_file()
     assert _uninstall(SimpleNamespace(receipt=str(receipt_path), root=tmp_path)) == 0
     assert not settings.exists()
     assert not receipt_path.exists()
+
+
+def test_cli_codex_project_install_and_uninstall_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert _install(SimpleNamespace(host="codex", scope="project", dry_run=False)) == 0
+    assert (tmp_path / ".codex" / "skills" / "spec-driven-development" / "SKILL.md").is_file()
+    assert (tmp_path / ".codex" / "prompts" / "confirm-next.md").is_file()
+    receipt_path = tmp_path / ".spec-driven" / "install-receipts" / "codex.json"
+    assert receipt_path.is_file()
+    assert _uninstall(SimpleNamespace(receipt=str(receipt_path), root=tmp_path)) == 0
+    assert not receipt_path.exists()
+
+
+def test_cli_uninstall_missing_receipt_returns_input_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    missing = tmp_path / "missing.json"
+    assert main(["--project", str(tmp_path), "uninstall", "--receipt", str(missing), "--root", str(tmp_path)]) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["code"] == "CLI_INPUT_INVALID"
+
+
+def test_cli_uninstall_list_root_receipt_returns_input_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    receipt = tmp_path / "receipt.json"
+    receipt.write_text("[]", encoding="utf-8")
+    assert main(["--project", str(tmp_path), "uninstall", "--receipt", str(receipt), "--root", str(tmp_path)]) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["code"] == "CLI_INPUT_INVALID"
 
 
 def test_cli_install_dry_run_does_not_mutate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

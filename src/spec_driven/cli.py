@@ -19,8 +19,10 @@ from .install import (
     TomlInstallReceipt,
     apply_install,
     copy_assets,
+    copy_skill_tree,
     merge_toml_fragment,
     plan_install,
+    resolve_package_root,
     rollback_install,
     rollback_toml,
     verify_receipt,
@@ -89,16 +91,17 @@ def _handlers(engine: CoreEngine, payload: dict[str, object]) -> dict[str, Calla
 
 def _install(args: argparse.Namespace) -> int:
     root = Path.home() if args.scope == "user" else Path.cwd()
-    manifest_path = Path(__file__).resolve().parents[2] / "install" / "manifests" / f"{args.host}.json"
+    package_root = resolve_package_root(Path(__file__).resolve())
+    manifest_path = package_root / "install" / "manifests" / f"{args.host}.json"
     manifest = load_host_manifest(manifest_path)
-    source_root = manifest_path.parents[2]
+    source_root = package_root
     plan = plan_install(manifest, root, source_root)
     if args.dry_run:
         _emit({"host": args.host, "scope": args.scope, "settings_target": str(plan.settings_target), "dry_run": True})
         return 0
     if args.host == "codex":
         receipt = merge_toml_fragment(plan.settings_target, manifest.settings_fragment)
-        copy_assets(source_root, root / ".codex")
+        copy_assets(source_root / manifest.skill_source, root / ".codex")
         payload = {
             "kind": "toml",
             "backup_path": str(receipt.backup_path) if receipt.backup_path is not None else None,
@@ -108,6 +111,7 @@ def _install(args: argparse.Namespace) -> int:
     else:
         backup_dir = root / ".spec-driven" / "install-receipts" / ".backups"
         receipt = apply_install(plan, backup_dir)
+        copy_skill_tree(source_root / manifest.skill_source, root / manifest.skill_target)
         payload = {
             "kind": "json",
             "backup_dir": str(receipt.backup_dir),
@@ -150,14 +154,14 @@ def _uninstall(args: argparse.Namespace) -> int:
             rollback_toml(receipt)
         else:
             raise CliInputError(f"unknown receipt kind: {kind!r}")
-    except ValueError as error:
+    except (ValueError, OSError, KeyError, TypeError, AttributeError) as error:
         raise CliInputError(str(error)) from error
     receipt_path.unlink(missing_ok=True)
     return 0
 
 
 def _migrate(args: argparse.Namespace) -> int:
-    project = Path(args.project)
+    project = Path(args.project).resolve()
     backup_dir = project / ".spec-driven" / "migration-backups"
     registry = MigrationRegistry()
     target_version = args.target_version
@@ -171,41 +175,61 @@ def _migrate(args: argparse.Namespace) -> int:
     if config_path.is_file():
         found.append((config_path, "config"))
 
+    skipped: list[dict[str, object]] = []
     for candidate in (project / "spec-driven.config.yaml", project / "spec-driven.config.toml"):
         if candidate.is_file() and not config_path.is_file():
-            _emit(
+            skipped.append(
                 {
                     "path": str(candidate),
                     "kind": "config",
-                    "skipped": "non-json-config",
+                    "reason": "non-json-config",
                     "message": "migrations apply to JSON machine documents only",
                 }
             )
 
     if not found:
-        _emit({"project": str(project), "target_version": target_version, "migrated": [], "dry_run": dry_run})
+        _emit(
+            {
+                "project": str(project),
+                "target_version": target_version,
+                "dry_run": dry_run,
+                "documents": [],
+                "skipped": skipped,
+            }
+        )
         return 0
 
+    documents: list[dict[str, object]] = []
     try:
-        if dry_run:
-            for path, kind in found:
-                document = json.loads(path.read_text(encoding="utf-8"))
-                _emit(
+        for path, kind in found:
+            document = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(document, dict):
+                raise CliInputError(f"machine document root must be a JSON object: {path}")
+            if dry_run:
+                documents.append(
                     {
                         "path": str(path),
                         "kind": kind,
                         "current_version": int(document.get("schema_version", 0)),
                         "target_version": target_version,
-                        "dry_run": True,
                     }
                 )
-            return 0
-        for path, kind in found:
-            migrate_file(path, kind, target_version, backup_dir, registry)
-            _emit({"path": str(path), "kind": kind, "migrated": True})
-        return 0
+            else:
+                migrate_file(path, kind, target_version, backup_dir, registry)
+                documents.append({"path": str(path), "kind": kind, "migrated": True})
     except ValueError as error:
         raise CliInputError(str(error)) from error
+
+    _emit(
+        {
+            "project": str(project),
+            "target_version": target_version,
+            "dry_run": dry_run,
+            "documents": documents,
+            "skipped": skipped,
+        }
+    )
+    return 0
 
 
 def _doctor(arguments: argparse.Namespace) -> int:
@@ -288,6 +312,9 @@ def main(argv: list[str] | None = None) -> int:
             _error(error)
             return 2
         return _error(error)
+    except (OSError, KeyError, TypeError) as error:
+        _error(CliInputError(str(error)))
+        return 2
 
 
 if __name__ == "__main__":

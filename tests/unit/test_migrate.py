@@ -9,20 +9,6 @@ from spec_driven.cli import main
 from spec_driven.migrate import Migration, MigrationRegistry, migrate_file
 
 
-def _parse_all(text: str) -> list[object]:
-    decoder = json.JSONDecoder()
-    result: list[object] = []
-    index = 0
-    while index < len(text):
-        while index < len(text) and text[index].isspace():
-            index += 1
-        if index >= len(text):
-            break
-        value, index = decoder.raw_decode(text, index)
-        result.append(value)
-    return result
-
-
 def test_registry_applies_each_version_once() -> None:
     registry = MigrationRegistry()
     registry.register(Migration("state", 1, 2, lambda value: {**value, "schema_version": 2, "v2": True}))
@@ -92,18 +78,21 @@ def test_cli_migrate_dry_run_reports_documents_without_writing(tmp_path: Path, c
 
     assert main(["--project", str(tmp_path), "migrate", "--target-version", "1", "--dry-run"]) == 0
     report = json.loads(capsys.readouterr().out)
-    assert report["path"] == str(state)
-    assert report["kind"] == "state"
-    assert report["current_version"] == 1
+    assert report["project"] == str(tmp_path)
     assert report["target_version"] == 1
     assert report["dry_run"] is True
+    assert report["skipped"] == []
+    assert report["documents"] == [
+        {"path": str(state), "kind": "state", "current_version": 1, "target_version": 1}
+    ]
     assert json.loads(state.read_text(encoding="utf-8"))["schema_version"] == 1
 
 
 def test_cli_migrate_no_documents_reports_empty(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["--project", str(tmp_path), "migrate", "--target-version", "2"]) == 0
     report = json.loads(capsys.readouterr().out)
-    assert report["migrated"] == []
+    assert report["documents"] == []
+    assert report["skipped"] == []
     assert report["target_version"] == 2
     assert report["dry_run"] is False
 
@@ -124,5 +113,24 @@ def test_cli_migrate_notes_non_json_config(tmp_path: Path, capsys: pytest.Captur
     (tmp_path / "spec-driven.config.yaml").write_text("schema_version: 1\n", encoding="utf-8")
 
     assert main(["--project", str(tmp_path), "migrate", "--target-version", "1"]) == 0
-    notes = [value for value in _parse_all(capsys.readouterr().out) if isinstance(value, dict) and value.get("skipped") == "non-json-config"]
-    assert notes == [{"path": str(tmp_path / "spec-driven.config.yaml"), "kind": "config", "skipped": "non-json-config", "message": "migrations apply to JSON machine documents only"}]
+    report = json.loads(capsys.readouterr().out)
+    assert report["documents"] == []
+    assert report["skipped"] == [
+        {
+            "path": str(tmp_path / "spec-driven.config.yaml"),
+            "kind": "config",
+            "reason": "non-json-config",
+            "message": "migrations apply to JSON machine documents only",
+        }
+    ]
+
+
+def test_cli_migrate_non_dict_document_is_input_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    state = tmp_path / ".spec-driven" / "state.json"
+    state.parent.mkdir(parents=True)
+    state.write_text("[]", encoding="utf-8")
+
+    assert main(["--project", str(tmp_path), "migrate", "--target-version", "1"]) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["code"] == "CLI_INPUT_INVALID"
+    assert "machine document root must be a JSON object" in payload["message"]

@@ -19,6 +19,10 @@ review the `--dry-run` preview before a real install. Uninstall with
 `spec-driven uninstall --receipt PATH --root ROOT`, which restores the original
 settings from the recorded receipt.
 
+## Commands / version
+
+- `spec-driven --version` — prints the installed version (e.g. `0.1.0`).
+
 ## Project configuration
 
 A project opts in with a `spec-driven.config.yaml`. Both the unit command and the

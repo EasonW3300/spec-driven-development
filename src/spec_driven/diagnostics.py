@@ -53,29 +53,61 @@ def run_doctor(project_root: Path, host: str) -> tuple[DoctorCheck, ...]:
     try:
         config = load_config(project_root)
         checks.append(DoctorCheck("configuration", "pass", "schema version 1 loaded", None))
+    except SpecDrivenError as error:
+        checks.append(
+            DoctorCheck(
+                "configuration",
+                "fail",
+                f"{error.code}: {error}",
+                "check spec-driven.config.yaml",
+            )
+        )
+        return tuple(checks)
+    except Exception as error:
+        checks.append(
+            DoctorCheck("configuration", "fail", str(error), "check spec-driven.config.yaml")
+        )
+        return tuple(checks)
+    try:
         discover_documents(project_root, config, builtin_registry())
         checks.append(DoctorCheck("document_discovery", "pass", "one spec and one plan selected", None))
     except SpecDrivenError as error:
-        checks.append(DoctorCheck(
-            "document_discovery",
-            "fail",
-            f"{error.code}: {error}",
-            "set spec.paths and plan.paths in spec-driven.config.yaml",
-        ))
-        return tuple(checks)
+        checks.append(
+            DoctorCheck(
+                "document_discovery",
+                "fail",
+                f"{error.code}: {error}",
+                "set spec.paths and plan.paths in spec-driven.config.yaml",
+            )
+        )
+    except Exception as error:
+        checks.append(
+            DoctorCheck(
+                "document_discovery",
+                "fail",
+                str(error),
+                "set spec.paths and plan.paths in spec-driven.config.yaml",
+            )
+        )
     try:
         infer_test_commands(project_root, config)
         checks.append(DoctorCheck("test_commands", "pass", "unit and regression commands configured", None))
     except SpecDrivenError as error:
-        checks.append(DoctorCheck("test_commands", "fail", str(error), "configure tests.unit.command and tests.regression.command"))
+        checks.append(
+            DoctorCheck("test_commands", "fail", str(error), "configure tests.unit.command and tests.regression.command")
+        )
+    except Exception as error:
+        checks.append(
+            DoctorCheck("test_commands", "fail", str(error), "configure tests.unit.command and tests.regression.command")
+        )
     checks.append(DoctorCheck("host_adapter", "pass" if host in {"generic", "claude-code", "codex"} else "warn", host, None))
     return tuple(checks)
 
 
 def run_self_test(work_root: Path) -> dict[str, object]:
     root = work_root / "self-test"
-    shutil.copytree(_FIXTURE_ROOT, root)
     try:
+        shutil.copytree(_FIXTURE_ROOT, root)
         engine = CoreEngine.from_project(root, session_id_factory=lambda: "session-1")
         engine.start()
         engine.start_module(Event("start-1", 1, "session-1", "module_started", "t0", "core", "agent", "M1", {}))
@@ -102,5 +134,12 @@ def run_self_test(work_root: Path) -> dict[str, object]:
             "schema_version": 1,
             "status": "fail",
             "error_code": error.code,
+            "error": str(error),
+        }
+    except OSError as error:
+        return {
+            "schema_version": 1,
+            "status": "fail",
+            "error_code": "SELF_TEST_SETUP_FAILED",
             "error": str(error),
         }
