@@ -10,6 +10,7 @@ MANIFEST = HostManifest(
     "claude-code",
     "spec_driven.adapters.claude_code",
     "skills/spec-driven-development",
+    ".claude/skills/spec-driven-development",
     ".claude/settings.json",
     {},
 )
@@ -25,7 +26,7 @@ def test_claude_settings_merge_keeps_existing_hooks(tmp_path: Path) -> None:
     settings = tmp_path / ".claude" / "settings.json"
     settings.parent.mkdir()
     settings.write_text(json.dumps({"theme": "dark", "hooks": {"Notification": [{"command": "keep"}]}}), encoding="utf-8")
-    manifest = HostManifest(MANIFEST.schema_version, MANIFEST.host, MANIFEST.adapter_package, MANIFEST.skill_source, MANIFEST.settings_path, _fragment())
+    manifest = HostManifest(MANIFEST.schema_version, MANIFEST.host, MANIFEST.adapter_module, MANIFEST.skill_source, MANIFEST.skill_target, MANIFEST.settings_target, _fragment())
     plan = plan_install(manifest, tmp_path, tmp_path)
     receipt = apply_install(plan, tmp_path / ".backup")
     merged = json.loads(settings.read_text(encoding="utf-8"))
@@ -43,7 +44,7 @@ def test_rerunning_install_does_not_duplicate_registrations(tmp_path: Path) -> N
     settings = tmp_path / ".claude" / "settings.json"
     settings.parent.mkdir()
     settings.write_text(json.dumps({}), encoding="utf-8")
-    manifest = HostManifest(MANIFEST.schema_version, MANIFEST.host, MANIFEST.adapter_package, MANIFEST.skill_source, MANIFEST.settings_path, _fragment())
+    manifest = HostManifest(MANIFEST.schema_version, MANIFEST.host, MANIFEST.adapter_module, MANIFEST.skill_source, MANIFEST.skill_target, MANIFEST.settings_target, _fragment())
     plan = plan_install(manifest, tmp_path, tmp_path)
     apply_install(plan, tmp_path / ".backup")
     once = json.loads(settings.read_text(encoding="utf-8"))

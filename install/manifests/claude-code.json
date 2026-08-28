@@ -1,8 +1,56 @@
 {
-  "adapter_package": "spec_driven.adapters.claude_code",
-  "host": "claude-code",
   "schema_version": 1,
-  "settings_fragment": "adapters/claude-code/settings.fragment.json",
-  "settings_path": ".claude/settings.json",
-  "skill_source": "skills/spec-driven-development"
+  "host": "claude-code",
+  "adapter_module": "spec_driven.adapters.claude_code",
+  "skill_source": "skills/spec-driven-development",
+  "skill_target": ".claude/skills/spec-driven-development",
+  "settings_target": ".claude/settings.json",
+  "settings_fragment": {
+    "hooks": {
+      "SessionStart": [
+        {
+          "matcher": "",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "python -m spec_driven.adapters.claude_code_hook"
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "matcher": "Bash",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "python -m spec_driven.adapters.claude_code_hook"
+            }
+          ]
+        }
+      ],
+      "PostToolUseFailure": [
+        {
+          "matcher": "Bash",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "python -m spec_driven.adapters.claude_code_hook"
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "matcher": "",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "python -m spec_driven.adapters.claude_code_hook"
+            }
+          ]
+        }
+      ]
+    }
+  }
 }

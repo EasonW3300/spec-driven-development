@@ -65,7 +65,7 @@ class InstallReceipt:
 
 def plan_install(manifest: HostManifest, project_root: Path, source_root: Path) -> InstallPlan:
     del source_root
-    return InstallPlan(manifest=manifest, project_root=project_root.resolve(), settings_target=(Path(project_root).resolve() / manifest.settings_path))
+    return InstallPlan(manifest=manifest, project_root=project_root.resolve(), settings_target=(Path(project_root).resolve() / manifest.settings_target))
 
 
 def claude_code_settings_fragment(hook_command: str) -> dict[str, object]:

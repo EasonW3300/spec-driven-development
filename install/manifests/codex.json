@@ -1,12 +1,18 @@
 {
-  "adapter_package": "spec_driven.adapters.codex",
+  "schema_version": 1,
+  "host": "codex",
+  "adapter_module": "spec_driven.adapters.codex",
+  "skill_source": "adapters/codex",
+  "skill_target": ".codex/skills/spec-driven-development",
+  "settings_target": ".codex/config.toml",
+  "settings_fragment": {
+    "notify": {
+      "background": true
+    }
+  },
   "assets": {
     "prompts_dir": "adapters/codex/prompts",
     "skills_dir": "adapters/codex/skills"
   },
-  "config_fragment": "adapters/codex/config.fragment.toml",
-  "host": "codex",
-  "schema_version": 1,
-  "skill_source": "skills/spec-driven-development",
   "verify_command": "spec-driven doctor --host codex"
 }
