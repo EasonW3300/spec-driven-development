@@ -8,11 +8,23 @@ from pathlib import Path
 from typing import Callable
 
 from .adapters.generic import GenericAdapter
+from .capabilities import load_host_manifest
 from .config import load_config
 from .discovery import discover_documents, infer_test_commands
 from .documents import builtin_registry
 from .engine import CoreEngine
 from .errors import SpecDrivenError
+from .install import (
+    InstallReceipt,
+    TomlInstallReceipt,
+    apply_install,
+    copy_assets,
+    merge_toml_fragment,
+    plan_install,
+    rollback_install,
+    rollback_toml,
+    verify_receipt,
+)
 from .models import Checkpoint, Event, TestEvidence
 
 
@@ -89,6 +101,75 @@ def _handlers(engine: CoreEngine, payload: dict[str, object]) -> dict[str, Calla
     }
 
 
+def _install(args: argparse.Namespace) -> int:
+    root = Path.home() if args.scope == "user" else Path.cwd()
+    manifest_path = Path(__file__).resolve().parents[2] / "install" / "manifests" / f"{args.host}.json"
+    manifest = load_host_manifest(manifest_path)
+    source_root = manifest_path.parents[2]
+    plan = plan_install(manifest, root, source_root)
+    if args.dry_run:
+        _emit({"host": args.host, "scope": args.scope, "settings_target": str(plan.settings_target), "dry_run": True})
+        return 0
+    if args.host == "codex":
+        receipt = merge_toml_fragment(plan.settings_target, manifest.settings_fragment)
+        copy_assets(source_root, root / ".codex")
+        payload = {
+            "kind": "toml",
+            "backup_path": str(receipt.backup_path) if receipt.backup_path is not None else None,
+            "target": str(receipt.target),
+            "applied_keys": list(receipt.applied_keys),
+        }
+    else:
+        backup_dir = root / ".spec-driven" / "install-receipts" / ".backups"
+        receipt = apply_install(plan, backup_dir)
+        payload = {
+            "kind": "json",
+            "backup_dir": str(receipt.backup_dir),
+            "target": str(receipt.target),
+            "backup_file": str(receipt.backup_file) if receipt.backup_file is not None else None,
+        }
+    receipt_dir = root / ".spec-driven" / "install-receipts"
+    receipt_dir.mkdir(parents=True, exist_ok=True)
+    (receipt_dir / f"{args.host}.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _emit({"host": args.host, "scope": args.scope, "settings_target": str(plan.settings_target), "installed": True})
+    return 0
+
+
+def _uninstall(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    receipt_path = Path(args.receipt)
+    try:
+        payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+        kind = payload.get("kind")
+        if kind == "json":
+            receipt = InstallReceipt(
+                backup_dir=Path(payload["backup_dir"]),
+                target=Path(payload["target"]),
+                backup_file=Path(payload["backup_file"]) if payload.get("backup_file") else None,
+            )
+            verify_receipt(receipt, root)
+            rollback_install(receipt)
+        elif kind == "toml":
+            receipt = TomlInstallReceipt(
+                backup_path=Path(payload["backup_path"]) if payload.get("backup_path") else None,
+                target=Path(payload["target"]),
+                applied_keys=tuple(payload.get("applied_keys") or ()),
+            )
+            for candidate in (receipt.target, receipt.backup_path):
+                if candidate is None:
+                    continue
+                resolved = candidate.resolve()
+                if resolved != root and root not in resolved.parents:
+                    raise ValueError(f"path escapes target root: {candidate}")
+            rollback_toml(receipt)
+        else:
+            raise CliInputError(f"unknown receipt kind: {kind!r}")
+    except ValueError as error:
+        raise CliInputError(str(error)) from error
+    receipt_path.unlink(missing_ok=True)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="spec-driven", description="Host-neutral spec-driven development core")
     parser.add_argument("--project", default=".", help="project root directory")
@@ -103,12 +184,23 @@ def main(argv: list[str] | None = None) -> int:
         elif name in {"start"}:
             subparser.add_argument("--input", default="-", help='optional session JSON ({"session_id": ...}) or "-" for stdin')
     subparsers.add_parser("doctor", parents=[common])
+    parser_install = subparsers.add_parser("install", parents=[common])
+    parser_install.add_argument("--host", choices=("claude-code", "codex"), default="claude-code")
+    parser_install.add_argument("--scope", choices=("user", "project"), default="user")
+    parser_install.add_argument("--dry-run", action="store_true")
+    parser_uninstall = subparsers.add_parser("uninstall", parents=[common])
+    parser_uninstall.add_argument("--receipt", required=True)
+    parser_uninstall.add_argument("--root", default=".")
     arguments = parser.parse_args(argv)
 
     try:
         if arguments.command == "doctor":
             _emit(doctor(arguments.project))
             return 0
+        if arguments.command == "install":
+            return _install(arguments)
+        if arguments.command == "uninstall":
+            return _uninstall(arguments)
         engine = CoreEngine.from_project(Path(arguments.project))
         needs_input = arguments.command not in {"status", "recover"}
         payload = (

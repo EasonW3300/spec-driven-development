@@ -63,9 +63,31 @@ class InstallReceipt:
         return tuple(str(key) for key in keys)
 
 
+def _inside(root: Path, path: Path) -> Path:
+    resolved_root = root.resolve()
+    resolved = path.resolve()
+    if resolved != resolved_root and resolved_root not in resolved.parents:
+        raise ValueError(f"path escapes target root: {path}")
+    return resolved
+
+
 def plan_install(manifest: HostManifest, project_root: Path, source_root: Path) -> InstallPlan:
     del source_root
-    return InstallPlan(manifest=manifest, project_root=project_root.resolve(), settings_target=(Path(project_root).resolve() / manifest.settings_target))
+    resolved_root = project_root.resolve()
+    settings = _inside(resolved_root, resolved_root / manifest.settings_target)
+    return InstallPlan(manifest=manifest, project_root=resolved_root, settings_target=settings)
+
+
+def verify_receipt(receipt: InstallReceipt, root: Path) -> None:
+    """Reject any receipt path that would escape the declared target root."""
+    resolved_root = root.resolve()
+    for candidate in (receipt.target, receipt.backup_file, receipt.backup_dir):
+        if candidate is None:
+            continue
+        candidate = Path(candidate)
+        resolved = candidate.resolve()
+        if resolved != resolved_root and resolved_root not in resolved.parents:
+            raise ValueError(f"path escapes target root: {candidate}")
 
 
 def claude_code_settings_fragment(hook_command: str) -> dict[str, object]:
@@ -135,6 +157,8 @@ def _toml_value(value: object) -> str:
         return repr(value)
     if isinstance(value, list):
         return "[" + ", ".join(_toml_value(item) for item in value) + "]"
+    if isinstance(value, dict):
+        return "{ " + ", ".join(f"{key} = {_toml_value(item)}" for key, item in value.items()) + " }"
     raise ValueError(f"unsupported fragment value type for TOML: {type(value)!r}")
 
 
@@ -176,6 +200,7 @@ def merge_toml_fragment(config_path: Path, fragment: Mapping[str, object]) -> To
     else:
         updated = _managed_marker() + "\n"
     updated += "".join(f"{key} = {_toml_value(value)}\n" for key, value in changed.items())
+    config_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = config_path.with_name(config_path.name + ".spec-driven.tmp")
     temporary.write_text(updated, encoding="utf-8")
     os.replace(temporary, config_path)
