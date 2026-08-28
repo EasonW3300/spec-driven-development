@@ -3,15 +3,14 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Callable
 
 from .adapters.generic import GenericAdapter
 from .capabilities import load_host_manifest
-from .config import load_config
-from .discovery import discover_documents, infer_test_commands
-from .documents import builtin_registry
+from .diagnostics import run_doctor, run_self_test
 from .engine import CoreEngine
 from .errors import SpecDrivenError
 from .install import (
@@ -44,21 +43,6 @@ def _read_payload(name: str, *, allow_empty: bool = False) -> dict[str, object]:
     if not isinstance(loaded, dict):
         raise CliInputError("structured input root must be a JSON object")
     return loaded
-
-
-def doctor(project: str) -> dict[str, object]:
-    root = Path(project)
-    config = load_config(root)
-    spec, plan = discover_documents(root, config)
-    registry = builtin_registry()
-    modules = registry.for_path(root / plan.path, config.document_adapters).parse_modules(root / plan.path)
-    unit, regression = infer_test_commands(root, config)
-    return {
-        "status": "ok",
-        "documents": {"spec": spec.path, "plan": plan.path},
-        "modules": [module.module_id for module in modules],
-        "tests": {"unit": unit, "regression": regression},
-    }
 
 
 def _jsonable(value: object) -> object:
@@ -223,6 +207,28 @@ def _migrate(args: argparse.Namespace) -> int:
         raise CliInputError(str(error)) from error
 
 
+def _doctor(arguments: argparse.Namespace) -> int:
+    checks = run_doctor(Path(arguments.project), arguments.host)
+    failed = any(check.status == "fail" for check in checks)
+    if arguments.json:
+        _emit([asdict(check) for check in checks])
+    else:
+        for check in checks:
+            sys.stdout.write(f"{check.name}: {check.status} — {check.message}\n")
+    return 1 if failed else 0
+
+
+def _self_test(arguments: argparse.Namespace) -> int:
+    result = run_self_test(Path(tempfile.mkdtemp()))
+    if arguments.json:
+        _emit(result)
+    else:
+        sys.stdout.write(f"status: {result['status']}\n")
+        for name, value in result.get("checks", {}).items():
+            sys.stdout.write(f"{name}: {value}\n")
+    return 0 if result["status"] == "pass" else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="spec-driven", description="Host-neutral spec-driven development core")
     parser.add_argument("--project", default=".", help="project root directory")
@@ -236,7 +242,11 @@ def main(argv: list[str] | None = None) -> int:
             subparser.add_argument("--input", default="-", help="JSON input path or '-' for stdin")
         elif name in {"start"}:
             subparser.add_argument("--input", default="-", help='optional session JSON ({"session_id": ...}) or "-" for stdin')
-    subparsers.add_parser("doctor", parents=[common])
+    parser_doctor = subparsers.add_parser("doctor", parents=[common])
+    parser_doctor.add_argument("--host", default="generic", help="host name (generic, claude-code, codex)")
+    parser_doctor.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+    parser_self_test = subparsers.add_parser("self-test", parents=[common])
+    parser_self_test.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     parser_install = subparsers.add_parser("install", parents=[common])
     parser_install.add_argument("--host", choices=("claude-code", "codex"), default="claude-code")
     parser_install.add_argument("--scope", choices=("user", "project"), default="user")
@@ -251,8 +261,9 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if arguments.command == "doctor":
-            _emit(doctor(arguments.project))
-            return 0
+            return _doctor(arguments)
+        if arguments.command == "self-test":
+            return _self_test(arguments)
         if arguments.command == "install":
             return _install(arguments)
         if arguments.command == "uninstall":

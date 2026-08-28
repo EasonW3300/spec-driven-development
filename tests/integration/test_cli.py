@@ -49,13 +49,14 @@ def _status(root: Path) -> dict[str, object]:
     return payload
 
 
-def test_doctor_reports_discovery_and_modules(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_doctor_reports_checks_in_human_form(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     root = _project(tmp_path)
     assert main(["--project", str(root), "doctor"]) == 0
-    report = json.loads(capsys.readouterr().out)
-    assert report["status"] == "ok"
-    assert report["modules"] == ["M1", "M2"]
-    assert report["tests"]["unit"].startswith("python -m pytest")
+    out = capsys.readouterr().out
+    assert "configuration: pass" in out
+    assert "document_discovery: pass" in out
+    assert "test_commands: pass" in out
+    assert "host_adapter: pass" in out
 
 
 def test_cli_workflow_drives_gate_to_confirmation(tmp_path: Path) -> None:
