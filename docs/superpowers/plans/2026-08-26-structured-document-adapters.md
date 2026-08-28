@@ -767,9 +767,11 @@ git commit -m "feat: add deterministic JSON documents"
 
 **Files:**
 - Modify: `src/spec_driven/documents/__init__.py`
+- Modify: `src/spec_driven/config.py` (expose `CONFIG_FILENAME`; no behavior change)
 - Modify: `src/spec_driven/discovery.py`
 - Modify: `src/spec_driven/engine.py`
 - Create: `tests/e2e/test_structured_workflow.py` (consolidated parametrized E2E for both YAML and JSON)
+- Modify: `tests/unit/test_discovery.py` (YAML/JSON auto-discovery regression test)
 
 **Interfaces:**
 - `builtin_registry() -> DocumentRegistry` registers Markdown, YAML, and JSON exactly once.
@@ -786,9 +788,9 @@ from pathlib import Path
 
 import pytest
 
+from spec_driven import models
 from spec_driven.adapters.generic import GenericAdapter
 from spec_driven.engine import CoreEngine
-from spec_driven.models import Checkpoint, Event, TestEvidence
 
 _PARAMS = [
     ("yaml-project", ".yaml"),
@@ -813,10 +815,10 @@ def test_structured_fixture_runs_full_gated_transaction(tmp_path: Path, fixture:
     shutil.copytree(Path("fixtures") / fixture, root)
     engine = CoreEngine.from_project(root, session_id_factory=lambda: "session-1")
     engine.start()
-    engine.start_module(Event("start-1", 1, "session-1", "module_started", "t0", "core", "agent", "M1", {}))
-    engine.record_test("unit-1", TestEvidence("unit", "M1", "unit", ".", "t0", "t1", 0, None, "", 1))
-    engine.record_test("reg-1", TestEvidence("regression", "M1", "regression", ".", "t0", "t1", 0, None, "", 1))
-    engine.record_checkpoint("cp-event", Checkpoint("cp1", "M1", ("done",), ("note",)))
+    engine.start_module(models.Event("start-1", 1, "session-1", "module_started", "t0", "core", "agent", "M1", {}))
+    engine.record_test("unit-1", models.TestEvidence("unit", "M1", "unit", ".", "t0", "t1", 0, None, "", 1))
+    engine.record_test("reg-1", models.TestEvidence("regression", "M1", "regression", ".", "t0", "t1", 0, None, "", 1))
+    engine.record_checkpoint("cp-event", models.Checkpoint("cp1", "M1", ("done",), ("note",)))
     before = (root / "docs/plan.yaml" if "yaml" in fixture else root / "docs/plan.json").read_bytes()
     engine.confirm_next(
         GenericAdapter().normalize(
@@ -870,9 +872,16 @@ def builtin_registry() -> DocumentRegistry:
 
 - [ ] **Step 4: Replace hard-coded suffix and parser selection**
 
-In `src/spec_driven/discovery.py`, replace the `*.md`-only scan with a registry-aware scan. The `registry` parameter is optional; when omitted it falls back to `builtin_registry()` so the core baseline's two-argument calls (engine `start`, CLI `doctor`) keep working while still honoring `config.document_adapters`:
+In `src/spec_driven/config.py`, expose the config filename as a module-level constant (the loader and discovery must share the magic string, not each hard-code it), and have `load_config` read `project_root / CONFIG_FILENAME` (no behavior change):
 
 ```python
+CONFIG_FILENAME = "spec-driven.config.yaml"
+```
+
+In `src/spec_driven/discovery.py`, replace the `*.md`-only scan with a registry-aware scan. The `registry` parameter is optional; when omitted it falls back to `builtin_registry()` so the core baseline's two-argument calls (engine `start`, CLI `doctor`) keep working while still honoring `config.document_adapters`. `_scan` excludes `CONFIG_FILENAME`: the project's own config file is a `.yaml` in the enabled-suffix set and its name contains the `spec` token, so without the exclusion a YAML-enabled project with no explicit `spec.paths` would auto-discover the config file and fail with `DiscoveryAmbiguousError`:
+
+```python
+from .config import CONFIG_FILENAME
 from .documents import builtin_registry
 from .documents.registry import DocumentRegistry
 
@@ -882,6 +891,7 @@ def _scan(root: Path, kind: str, tokens: tuple[str, ...], suffixes: frozenset[st
         path
         for path in root.rglob("*")
         if path.is_file()
+        and path.name != CONFIG_FILENAME
         and path.suffix.lower() in suffixes
         and ".spec-driven" not in path.parts
         and any(token in path.name.lower() for token in tokens)
@@ -896,14 +906,38 @@ def discover_documents(
 ) -> tuple[DocumentRef, DocumentRef]:
     registry = registry or builtin_registry()
     suffixes = registry.enabled_suffixes(config.document_adapters)
-    specs = _configured(root, config.spec_paths, "spec") if config.spec_paths else _scan(root, "spec", ("spec", "design"), suffixes)
-    plans = _configured(root, config.plan_paths, "plan") if config.plan_paths else _scan(root, "plan", ("plan", "roadmap"), suffixes)
+    specs = (
+        _configured(root, config.spec_paths, "spec")
+        if config.spec_paths
+        else _scan(root, "spec", ("spec", "design"), suffixes)
+    )
+    plans = (
+        _configured(root, config.plan_paths, "plan")
+        if config.plan_paths
+        else _scan(root, "plan", ("plan", "roadmap"), suffixes)
+    )
     if len(specs) != 1 or len(plans) != 1:
         raise DiscoveryAmbiguousError(
             f"expected one spec and one plan; found {len(specs)} spec(s), {len(plans)} plan(s)",
             remediation="set spec.paths and plan.paths in spec-driven.config.yaml",
         )
     return specs[0], plans[0]
+```
+
+Regression test in `tests/unit/test_discovery.py` pinning the config-file exclusion (a YAML-enabled project with no explicit `spec.paths`/`plan.paths` must auto-discover exactly one spec and one plan, and never the config file itself):
+
+```python
+def test_auto_discovery_ignores_project_config_file(tmp_path: Path) -> None:
+    (tmp_path / "spec-driven.config.yaml").write_text(
+        "documents:\n  adapters:\n    - markdown\n    - yaml\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "spec.yaml").write_text("spec: []\n", encoding="utf-8")
+    (tmp_path / "docs" / "plan.yaml").write_text("plan: []\n", encoding="utf-8")
+    spec, plan = discover_documents(tmp_path, load_config(tmp_path))
+    assert spec.path == "docs/spec.yaml"
+    assert plan.path == "docs/plan.yaml"
 ```
 
 `CoreEngine` switches from a hard-coded `MarkdownAdapter` to the registry: replace `self.adapter = MarkdownAdapter()` with `self.registry = builtin_registry()` in `__init__`. In `start`, resolve the plan adapter per path:
@@ -964,6 +998,7 @@ Run:
 
 ```bash
 python -m pytest tests/contract/test_document_adapter.py tests/contract/test_structured_document_adapter.py -q
+python -m pytest tests/unit/test_discovery.py -q
 python -m pytest tests/e2e/test_structured_workflow.py -q
 python -m pytest -q
 ```
@@ -973,7 +1008,7 @@ Expected: all document formats start, parse modules, preserve unknown content, a
 - [ ] **Step 6: Commit the format integration**
 
 ```bash
-git add src/spec_driven/documents/__init__.py src/spec_driven/discovery.py src/spec_driven/engine.py tests/e2e/test_structured_workflow.py
+git add src/spec_driven/config.py src/spec_driven/documents/__init__.py src/spec_driven/discovery.py src/spec_driven/engine.py tests/e2e/test_structured_workflow.py tests/unit/test_discovery.py
 git commit -m "feat: integrate structured document plugins"
 ```
 
@@ -984,5 +1019,6 @@ git commit -m "feat: integrate structured document plugins"
 - [ ] JSON unknown fields and Unicode survive managed updates.
 - [ ] Duplicate, missing, or non-contiguous modules are rejected.
 - [ ] Disabled adapters cannot be selected by suffix alone.
+- [ ] Auto-discovery never picks up the project's own `spec-driven.config.yaml`.
 - [ ] Stale hashes prevent both YAML and JSON overwrite.
 - [ ] Both structured fixtures complete the same gated document transaction as Markdown.
